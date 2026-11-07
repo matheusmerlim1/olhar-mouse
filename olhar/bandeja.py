@@ -23,6 +23,8 @@ CORES = {
     "pausado": "#6b7280",      # cinza
     "parado": "#475569",       # cinza-azulado: sem câmera ligada, esperando a escolha
     "sem_rosto": "#dc2626",    # vermelho
+    "fora": "#b45309",         # âmbar: olhar fora da área calibrada
+    "cedido": "#0e7490",       # azul-petróleo: mouse físico em uso
 }
 TEXTO = {
     "carregando": "carregando…",
@@ -32,6 +34,8 @@ TEXTO = {
     "pausado": "PAUSADO (F9 retoma)",
     "parado": "parado — clique para escolher a câmera",
     "sem_rosto": "rosto não encontrado",
+    "fora": "olhar fora da área calibrada (F10 recalibra)",
+    "cedido": "mouse físico em uso — olhe para outro ponto para o olhar retomar",
 }
 
 

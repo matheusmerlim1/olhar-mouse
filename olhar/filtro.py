@@ -80,45 +80,90 @@ class MedianaVetor:
 class Estabilizador:
     """Zona de repouso por fixação: olhando para um ponto, o cursor fica parado.
 
-    Trabalha com o CENTRO das amostras dos últimos `janela` segundos (e não com cada
-    quadro, porque o ruído da íris sozinho já parece movimento):
-    - parado: só sai do lugar quando esse centro se afasta mais que `raio` px;
-    - movendo: acompanha o alvo e volta a parar quando as amostras recentes cabem num
-      círculo pequeno (fixação) — e para no centro delas.
+    - movendo: acompanha o alvo; quando as amostras dos últimos `janela` s se juntam
+      (dispersão média menor que o raio), PARA — no centro das amostras dos últimos
+      `janela_parada` s (mais amostras = ponto mais certo, sem ficar deslizando depois);
+    - parado: não mexe no cursor; só volta a seguir quando o centro recente se afasta mais
+      que o raio.
+    O raio se adapta: vira 2,5× o tremido medido, se isso for maior (até RAIO_MAX).
+    ceder(): o mouse físico foi usado; não puxa o cursor de volta até um olhar novo.
     raio = 0 desliga (o cursor segue o alvo sempre).
     """
 
-    def __init__(self, raio: float = 40, janela: float = 0.25):
+    RAIO_MAX = 250.0
+
+    def __init__(self, raio: float = 40, janela: float = 0.25, janela_parada: float = 0.6,
+                 adaptativo: bool = True):
         from collections import deque
-        self.raio, self.janela = raio, janela
+        self.raio, self.janela, self.janela_parada, self.adaptativo = raio, janela, janela_parada, adaptativo
         self._amostras = deque()
+        self.ruido = 0.0          # tremido medido (px, média móvel)
         self.reiniciar()
 
     def reiniciar(self):
         self.pos = None
-        self.movendo = True      # começa seguindo: só para quando a janela encher
+        self.movendo = True       # começa seguindo: só para quando a janela encher
+        self.cedido = False
+        self._ref = None
         self._amostras.clear()
 
-    def __call__(self, x: float, y: float, t: float) -> tuple[float, float]:
+    def ceder(self):
+        """O mouse físico foi usado: o olhar não puxa o cursor de volta. Só retoma quando
+        o ponto de fixação se afasta bem de onde estava (a pessoa olhou para outro lugar)."""
+        self.cedido = True
+        self._ref = None
+
+    @property
+    def raio_efetivo(self) -> float:
+        if not self.adaptativo or self.raio <= 0:
+            return self.raio
+        return max(self.raio, min(self.RAIO_MAX, 2.5 * self.ruido))
+
+    @property
+    def raio_retomar(self) -> float:
+        return max(150.0, 3 * self.raio_efetivo)
+
+    def _centro(self, t: float, janela: float):
+        sel = [a for a in self._amostras if t - a[0] <= janela]
+        n = len(sel)
+        cx = sum(a[1] for a in sel) / n
+        cy = sum(a[2] for a in sel) / n
+        rms = math.sqrt(sum((a[1] - cx) ** 2 + (a[2] - cy) ** 2 for a in sel) / n)
+        return cx, cy, rms, sel
+
+    def __call__(self, x: float, y: float, t: float) -> tuple[float, float] | None:
+        am = self._amostras
+        am.append((t, x, y))
+        while am and t - am[0][0] > max(self.janela, self.janela_parada):
+            am.popleft()
+        cx, cy, rms, sel = self._centro(t, self.janela)
+        cheia = t - sel[0][0] >= self.janela * 0.8
+
+        if self.cedido:
+            if self._ref is None:
+                self._ref = (cx, cy)
+            if math.hypot(cx - self._ref[0], cy - self._ref[1]) <= self.raio_retomar:
+                return None          # devolve None: não mexer no cursor
+            self.cedido, self.movendo = False, True
         if self.raio <= 0:
             self.pos = (x, y)
             return self.pos
-        am = self._amostras
-        am.append((t, x, y))
-        while am and t - am[0][0] > self.janela:
-            am.popleft()
-        cx = sum(a[1] for a in am) / len(am)
-        cy = sum(a[2] for a in am) / len(am)
+
+        if cheia:  # tremido medido o tempo todo (pesa mais com o cursor parado)
+            peso = 0.05 if not self.movendo else 0.02
+            self.ruido = (1 - peso) * self.ruido + peso * rms if self.ruido else rms
+        raio = self.raio_efetivo
         if not self.movendo:
-            if math.hypot(cx - self.pos[0], cy - self.pos[1]) <= self.raio:
+            if math.hypot(cx - self.pos[0], cy - self.pos[1]) <= raio:
                 return self.pos
             self.movendo = True
-        # movendo: segue o alvo; parou de mexer quando a janela inteira cabe no raio
-        cheia = t - am[0][0] >= self.janela * 0.8
-        dispersao = max(math.hypot(a[1] - cx, a[2] - cy) for a in am)
-        if cheia and dispersao <= self.raio * 0.8:
+
+        # movendo: segue o alvo; para quando as amostras recentes se juntam
+        if cheia and rms <= raio * 0.6:
             self.movendo = False
-            self.pos = (cx, cy)
+            px, py, _, _ = self._centro(t, self.janela_parada)
+            # só usa a janela longa se ela também é da mesma fixação (perto do centro curto)
+            self.pos = (px, py) if math.hypot(px - cx, py - cy) <= raio * 0.5 else (cx, cy)
         else:
             self.pos = (x, y)
         return self.pos

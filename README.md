@@ -73,8 +73,15 @@ do Python 3.12, `py -3.12`).
    avisa com um bipe grave e recomeça.
 3. Pronto: a tela volta ao normal e o cursor segue o olhar, em qualquer programa.
 
-Cor do ícone: **verde** seguindo o olhar · **cinza riscado** pausado ou parado · **vermelho** rosto não
-encontrado · **azul** esperando o celular · **roxo** calibrando · **laranja** carregando.
+**Funciona como um segundo mouse.** O mouse de verdade sempre funciona: se você mexer nele, o
+olhar não puxa o cursor de volta e só volta a mandar quando você olhar para outro lugar da tela.
+Olhando para um ponto, o cursor fica parado (não fica "tremendo"); a zona de repouso se ajusta
+sozinha ao tremido da sua câmera. Se a cabeça sair da posição da calibração (virada, olhando o
+teclado), o cursor fica parado e os cliques por piscada ficam desligados até você voltar.
+Os cliques por piscada caem onde o cursor estiver.
+
+Cor do ícone: **verde** seguindo o olhar · **cinza riscado** pausado ou parado · **azul-petróleo** mouse físico em
+uso · **âmbar** olhar fora da área calibrada · **vermelho** rosto não encontrado · **azul** esperando o celular · **roxo** calibrando · **laranja** carregando.
 
 Menu do ícone (botão direito): escolher câmera e começar (quando parado), pausar/retomar, trocar de câmera, recalibrar, mostrar a câmera, trocar entre webcam e
 celular, olho usado (os dois, só o esquerdo ou só o direito), uso óculos, bipes, iniciar com o
@@ -246,7 +253,7 @@ ajustes finos.
 .venv\Scripts\python -m unittest discover -s tests -t .
 ```
 
-São 56 testes, todos sem câmera nem celular: os gestos (sequências de piscadas sintéticas, incluindo
+São 64 testes, todos sem câmera nem celular: os gestos (sequências de piscadas sintéticas, incluindo
 piscadas normais, ruído de um quadro, olhos que não fecham juntos, olho fechado demais), as
 pálpebras (calibração por usuário, histerese, pico de reflexo), a geometria, a regressão, o
 filtro e o congelamento do cursor.

@@ -96,10 +96,18 @@ class Suavizador:
         self.euro = OneEuro2D(min_cutoff=p["min_cutoff"], beta=p["beta"])
         self.repouso = Estabilizador(raio=p["raio"])
 
-    def __call__(self, vetor, modelo, t: float) -> tuple[float, float]:
+    def __call__(self, vetor, modelo, t: float) -> tuple[float, float] | None:
+        """Ponto do cursor, ou None quando o olhar cedeu ao mouse físico."""
         alvo = modelo.prever(self.mediana(vetor))
         x, y = self.euro(float(alvo[0]), float(alvo[1]), t)
         return self.repouso(x, y, t)
+
+    def ceder(self):
+        self.repouso.ceder()
+
+    @property
+    def cedido(self) -> bool:
+        return self.repouso.cedido
 
 
 class Congelador:
@@ -261,6 +269,9 @@ def executar(cfg: dict, arq_calib: Path, ctl, ui, forcar_calibracao: bool = Fals
 
         palp, gestos, filtro, cong = novo_estado()
         sem_rosto_desde = None
+        fora_desde = None
+        colocado = None      # último ponto em que o OLHAR pôs o cursor
+        fisico_t = None
         teclas_antes = {mouse.VK_F9: False, mouse.VK_F10: False}
         msg, msg_t, evento_visto = "", 0.0, ""
         pausa_antes = ctl.pausado
@@ -305,6 +316,7 @@ def executar(cfg: dict, arq_calib: Path, ctl, ui, forcar_calibracao: bool = Fals
                     bipe(500 if ctl.pausado else 800, 90)
 
             congelado = None
+            fora = False
             if m is None:
                 sem_rosto_desde = sem_rosto_desde or t
                 gestos.atualizar(t, False, False)
@@ -319,16 +331,32 @@ def executar(cfg: dict, arq_calib: Path, ctl, ui, forcar_calibracao: bool = Fals
                 clique = gestos.atualizar(t, fe, fd)
                 congelado = cong.atualizar(t, gestos.fechando)
 
+                vetor = vetor_olhar(m, olho)
+                fora = modelo.fora(vetor)      # cabeça virada / olhando para fora da tela
+                fora_desde = (fora_desde or t) if fora else None
+
+                # --- segundo mouse: se o cursor não está onde o olhar o deixou, foi o mouse
+                # físico. O olhar cede e não puxa de volta (só retoma num olhar novo).
+                real = mouse.posicao()
+                if colocado is not None and abs(real[0] - colocado[0]) + abs(real[1] - colocado[1]) > 6:
+                    filtro.ceder()
+                    colocado = None
+                    fisico_t = t
+
                 if not ctl.pausado:
-                    if congelado is None:
-                        x, y = filtro(vetor_olhar(m, olho), modelo, t)
-                        x = int(np.clip(x, 0, tela[0] - 1))
-                        y = int(np.clip(y, 0, tela[1] - 1))
-                        cong.registrar(t, x, y)
-                        mouse.mover(x, y)
-                    if clique:
-                        px, py = congelado or (cong.hist[-1][1:] if cong.hist else (None, None))
-                        mouse.clicar(clique, px, py)
+                    if congelado is None and not fora:
+                        alvo = filtro(vetor, modelo, t)
+                        if alvo is not None:
+                            x = int(np.clip(alvo[0], 0, tela[0] - 1))
+                            y = int(np.clip(alvo[1], 0, tela[1] - 1))
+                            cong.registrar(t, x, y)
+                            # só mexe no cursor quando o ponto MUDA: parado, o mouse físico fica livre
+                            if (x, y) != colocado:
+                                mouse.mover(x, y)
+                                colocado = (x, y)
+                    if clique and not fora:
+                        # clica onde o cursor está (mesmo que o mouse físico o tenha posto lá)
+                        mouse.clicar(clique)
                         msg, msg_t = f"CLIQUE {clique.upper()}", t
                         if cfg["som"]:
                             bipe(1200 if clique == "esquerdo" else 700, 60)
@@ -336,12 +364,18 @@ def executar(cfg: dict, arq_calib: Path, ctl, ui, forcar_calibracao: bool = Fals
                     evento_visto = gestos.ultimo_evento
                     if not (clique and msg_t == t):
                         msg, msg_t = evento_visto, t
-                status = "PAUSADO (F9)" if ctl.pausado else ("parado (piscando)" if congelado else "seguindo o olhar")
+                status = ("PAUSADO (F9)" if ctl.pausado else "olhar fora da area calibrada" if fora
+                          else "mouse fisico: olhe outro ponto" if filtro.cedido
+                          else "parado (piscando)" if congelado else "seguindo o olhar")
 
             if ctl.pausado:
                 ui.definir_estado("pausado")
             elif sem_rosto_desde and t - sem_rosto_desde > 1.0:
                 ui.definir_estado("sem_rosto")
+            elif m is not None and fora_desde and t - fora_desde > 1.0:
+                ui.definir_estado("fora")
+            elif m is not None and filtro.cedido:
+                ui.definir_estado("cedido")
             elif m is not None:
                 ui.definir_estado("seguindo")
 

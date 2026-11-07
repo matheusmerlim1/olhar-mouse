@@ -126,16 +126,20 @@ def _preparar(cap, detector, tela: _Tela, firme: float = 1.5) -> None:
         if m is None:
             desde = None
             txt, cor = "Rosto nao encontrado: fique de frente para a camera, com luz no rosto", (80, 80, 255)
+        elif np.ptp(m.pontos[:, 0]) < 0.28 * frame.shape[1]:
+            # rosto pequeno = íris com poucos pixels = cursor impreciso e tremido
+            desde = None
+            txt, cor = "Rosto pequeno: aproxime a camera (o rosto deve ocupar ~1/3 da imagem)", (80, 200, 255)
         else:
             desde = desde or t
             txt, cor = "Rosto encontrado! Fique assim...", (120, 230, 120)
         tela._centralizado(fundo, txt, y0 - 30, 0.9, cor)
-        tela._centralizado(fundo, "Esc cancela", tela.h - 40, 0.6, (170, 170, 170))
+        tela._centralizado(fundo, "Enter: comecar assim mesmo   -   Esc cancela", tela.h - 40, 0.6, (170, 170, 170))
         cv2.imshow(JANELA, fundo)
         k = cv2.waitKey(1) & 0xFF
         if k in (27, ord("q")):
             raise Cancelado
-        if desde is not None and (t - desde >= firme or k in (13, 32)):
+        if m is not None and (k in (13, 32) or (desde is not None and t - desde >= firme)):
             return
 
 

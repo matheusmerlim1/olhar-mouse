@@ -164,7 +164,7 @@ class TestEstabilidade(unittest.TestCase):
         alvos = [(900, 500)] * 150                      # 5 s olhando o mesmo ponto
         resumo = []
         for nivel in ("baixa", "media", "alta"):
-            sai = self.simular(nivel, alvos)[30:]
+            sai = self.simular(nivel, alvos)[60:]          # depois de a fixação assentar
             passos = np.hypot(*np.diff(sai, axis=0).T)
             mexeu = int((passos > 0.5).sum())
             resumo.append(f"{nivel}: mexeu em {mexeu}/{len(passos)} quadros, média {passos.mean():.1f} px")
@@ -179,8 +179,10 @@ class TestEstabilidade(unittest.TestCase):
             sai = self.simular(nivel, alvos)
             chegada = next(i for i in range(60, 120) if np.hypot(*(sai[i] - (1400, 800))) < 80)
             self.assertLess((chegada - 60) / 30, 0.7, nivel)    # menos de 0,7 s
-            final = sai[100:]
-            self.assertLess(np.hypot(*np.diff(final, axis=0).T).max(), 0.5, nivel)  # e para lá
+            # e para lá: no máximo UMA correção pequena quando a fixação se firma
+            passos = np.hypot(*np.diff(sai[75:], axis=0).T)
+            self.assertLessEqual(int((passos > 0.5).sum()), 1, nivel)
+            self.assertLess(passos.max(), 60, nivel)
 
     def test_mediana_tira_pico_de_um_quadro(self):
         from olhar.filtro import MedianaVetor
@@ -188,3 +190,38 @@ class TestEstabilidade(unittest.TestCase):
         for v in ([0, 0], [0, 0], [9, 9], [0, 0], [0, 0]):
             r = m(v)
         np.testing.assert_allclose(r, [0, 0])
+
+
+class TestSegundoMouse(unittest.TestCase):
+    def test_cede_ao_mouse_fisico_e_so_retoma_num_olhar_novo(self):
+        from olhar.filtro import Estabilizador
+        e = Estabilizador(raio=40)
+        t = 0.0
+        for _ in range(30):                       # olhando para (500, 500)
+            e(500, 500, t); t += 1 / 30
+        e.ceder()                                 # a pessoa mexeu no mouse físico
+        for _ in range(60):                       # continua olhando o mesmo ponto
+            self.assertIsNone(e(500 + (t * 7 % 20), 500, t))   # não puxa o cursor de volta
+            t += 1 / 30
+        self.assertTrue(e.cedido)
+        saida = None
+        for _ in range(30):                       # olha para outro lugar da tela
+            saida = e(1200, 300, t); t += 1 / 30
+        self.assertFalse(e.cedido)
+        self.assertLess(np.hypot(saida[0] - 1200, saida[1] - 300), 5)
+
+
+class TestForaDaCalibracao(unittest.TestCase):
+    def setUp(self):
+        rng = np.random.default_rng(0)
+        f = rng.normal(0, [0.05, 0.02, 0.1, 0.08], (200, 4))
+        self.m = ModeloOlhar()
+        self.m.ajustar(f, 960 + f[:, :2] * [6000, 9000] + rng.normal(0, 20, (200, 2)))
+
+    def test_detecta_cabeca_virada(self):
+        self.assertFalse(self.m.fora([0.0, 0.0, 0.0, 0.0]))
+        self.assertTrue(self.m.fora([0.0, 0.0, 1.2, 0.0]))     # yaw 12 desvios: cabeça virada
+
+    def test_previsao_nao_explode(self):
+        longe = self.m.prever([0.5, -0.4, 1.3, 0.6])            # valores medidos com a cabeça virada
+        self.assertLess(np.abs(longe - 960).max(), 3000)        # antes chegava a dezenas de milhares

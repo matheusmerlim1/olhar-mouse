@@ -23,6 +23,15 @@ if sys.platform == "win32":
     def mover(x: int, y: int) -> None:
         _u32.SetCursorPos(int(x), int(y))
 
+    class _Ponto(ctypes.Structure):
+        _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+
+    def posicao() -> tuple[int, int]:
+        """Onde o cursor está agora (para perceber o mouse físico)."""
+        p = _Ponto()
+        _u32.GetCursorPos(ctypes.byref(p))
+        return p.x, p.y
+
     def clicar(botao: str, x: int | None = None, y: int | None = None) -> None:
         if x is not None:
             mover(x, y)
@@ -45,6 +54,9 @@ else:  # pragma: no cover - só para rodar em Linux/macOS
 
     def mover(x: int, y: int) -> None:
         pyautogui.moveTo(int(x), int(y))
+
+    def posicao() -> tuple[int, int]:
+        return tuple(pyautogui.position())
 
     def clicar(botao: str, x: int | None = None, y: int | None = None) -> None:
         pyautogui.click(x=x, y=y, button="left" if botao == "esquerdo" else "right")
