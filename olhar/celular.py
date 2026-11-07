@@ -69,7 +69,13 @@ async function iniciar(){
     const s = await navigator.mediaDevices.getUserMedia({audio:false,
       video:{facingMode:'user', width:{ideal:640}, height:{ideal:480}, frameRate:{ideal:QPS, max:30}}});
     v.srcObject = s; await v.play();
-  } catch(e){ msg('Não consegui abrir a câmera: ' + e.message, 'erro'); return; }
+  } catch(e){
+    if (e.name === 'NotAllowedError'){ msg('Permita o uso da câmera e toque em “Usar câmera”.', 'erro'); return; }
+    // câmera ocupada (desbloqueio facial, outro app) ou celular bloqueado: tenta de novo sozinho
+    msg('Câmera ocupada ou celular bloqueado — tentando de novo… (' + e.message + ')', 'erro');
+    setTimeout(iniciar, 3000);
+    return;
+  }
   document.getElementById('ir').hidden = true;
   manterAcesa(); document.addEventListener('visibilitychange', manterAcesa);
   if (!rodando){ rodando = true; enviar(); }
