@@ -63,6 +63,7 @@ class Controle:
         self.reiniciar = False      # config mudou (câmera, óculos, olho): reabre tudo
         self.escolher = False       # mostrar a tela das 3 opções de câmera
         self.parado = False         # na bandeja, sem câmera ligada (saiu da escolha/calibração)
+        self.reabrir = False        # atualizou pelo menu: sair e abrir a versão nova
         self.sair = False
 
 
@@ -150,6 +151,8 @@ class Bandeja:
         self.raiz, self.cfg, self.ctl, self._salvar_cfg = raiz, cfg, controle, salvar_cfg
         self.estado = "carregando"
         self._cameras: list[str] = []
+        from .atualizador import versao_curta
+        self._versao = versao_curta(raiz)
         self._icone = pystray.Icon("olhar-mouse", desenhar_icone(self.estado),
                                    "Olhar-mouse — carregando…", menu=self._menu())
         # o ícone roda numa thread só dele, com o próprio laço de mensagens do
@@ -221,6 +224,19 @@ class Bandeja:
     def _inicio(self, *_):
         definir_inicio_com_windows(not inicia_com_windows(), self.raiz)
         self._icone.update_menu()
+
+    def _procurar_atualizacao(self, *_):
+        def tarefa():
+            from .atualizador import procurar_e_aplicar
+            atualizou, msg = procurar_e_aplicar(self.raiz)
+            print(f"Atualização (menu): {msg}")
+            if atualizou:
+                self.notificar("Olhar-mouse atualizado", "Reabrindo com a versão nova…")
+                self.ctl.reabrir = True
+                self.ctl.sair = True
+            else:
+                self.notificar("Atualizações", msg[:1].upper() + msg[1:] + ".")
+        threading.Thread(target=tarefa, daemon=True).start()
 
     def _atalhos(self, *_):
         feitos = criar_atalhos(self.raiz)
@@ -310,6 +326,7 @@ class Bandeja:
             M("Bipes", self._alternar("som", reinicia=False), checked=lambda _: bool(self.cfg.get("som"))),
             Sep,
             M("Iniciar com o Windows", self._inicio, checked=lambda _: inicia_com_windows()),
+            M(lambda _: f"Procurar atualizações agora (versão {self._versao})", self._procurar_atualizacao),
             M("Criar atalhos (Área de Trabalho e menu Iniciar)", self._atalhos),
             M("Liberar firewall para o celular…", self._firewall),
             M("Abrir configurações (config.json)", lambda *_: os.startfile(self.raiz / "config.json")),

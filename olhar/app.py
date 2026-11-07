@@ -32,6 +32,7 @@ PADRAO = {
     "realce_contraste": False,
     "mostrar_camera": False,
     "perguntar_camera": True,
+    "atualizar_automaticamente": True,
     "som": True,
     "pontos_calibracao": 13,
     "gestos": {"lento_min": 0.30, "lento_max": 1.50, "janela": 1.50},
@@ -387,6 +388,9 @@ def main(argv=None):
     ap.add_argument("--camera", help='troca a câmera e grava no config: número, "celular" ou URL')
     ap.add_argument("--console", action="store_true", help="sem ícone na bandeja, mensagens no terminal")
     ap.add_argument("--pasta", help=argparse.SUPPRESS)  # só identifica o atalho de iniciar com o Windows
+    ap.add_argument("--sem-atualizar", action="store_true", help="não procura versão nova ao abrir")
+    ap.add_argument("--aguardar-pid", type=int, help=argparse.SUPPRESS)  # reinício após atualizar
+    argv_original = list(sys.argv[1:] if argv is None else argv)
     args = ap.parse_args(argv)
 
     (RAIZ / "dados").mkdir(exist_ok=True)
@@ -395,11 +399,33 @@ def main(argv=None):
         log = open(RAIZ / "dados" / "olhar.log", "a", encoding="utf-8", buffering=1)
         sys.stdout = sys.stderr = log
         print(f"\n=== {time.strftime('%Y-%m-%d %H:%M:%S')} olhar-mouse iniciado")
+    from . import atualizador
+    if args.aguardar_pid:
+        atualizador.aguardar_processo(args.aguardar_pid)   # a versão antiga terminando de sair
     if not _uma_instancia():
         return
 
     arq_cfg = RAIZ / "dados" / "config.json"   # escolhas do menu (fora do git)
     cfg = ler_config(Path(args.config), arq_cfg)
+    print(f"Versão {atualizador.versao_curta(RAIZ)}")
+
+    # como o ditado (projeto 24), mas ANTES de rodar: procura versão nova no GitHub e,
+    # se houver, atualiza e reabre já com o código novo. Sem internet, segue normalmente.
+    if not args.sem_atualizar and cfg.get("atualizar_automaticamente", True):
+        atualizou, msg = atualizador.procurar_e_aplicar(RAIZ)
+        print(f"Atualização: {msg}")
+        if atualizou:
+            atualizador.reabrir(RAIZ, argv_original)
+            return
+
+    # primeira abertura depois de uma atualização: card com o que mudou (uma vez só)
+    from . import novidades
+    pendente = novidades.pendentes(RAIZ)
+    if pendente:
+        try:
+            novidades.mostrar_card(pendente)
+        except Exception as e:
+            print(f"card de novidades: {e!r}")
     if args.camera is not None:
         if args.camera.strip().lower() == "computador":
             # primeira câmera real do Windows (as virtuais, como a do OBS, não contam)
@@ -480,6 +506,8 @@ def main(argv=None):
                 break
     finally:
         ui.fechar()
+        if ctl.reabrir:            # atualizou pelo menu do ícone
+            atualizador.reabrir(RAIZ, argv_original)
 
 
 if __name__ == "__main__":

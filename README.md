@@ -25,6 +25,14 @@ Página de download: **https://matheusmerlim1.github.io/olhar-mouse/**
    no menu Iniciar. Pode rodar de novo para atualizar ou reparar.
 3. Para remover: `desinstalar.bat` (tira atalhos e a abertura com o Windows) e apague a pasta.
 
+### Atualização automática
+
+Toda vez que abre, o programa procura uma versão nova no GitHub e **atualiza antes de rodar**
+(sem internet, segue normalmente). Sua calibração e preferências (`dados/`) nunca são
+sobrescritas. Depois de atualizar, mostra um card com as **Novidades** e **Correções**. No menu do
+ícone há também *Procurar atualizações agora*. Para desligar: `"atualizar_automaticamente": false`
+no `config.json`.
+
 ## Como usar
 
 O programa roda **sem janela**, como o ditado por voz (projeto 24). Ao abrir, ele mostra só a
@@ -225,6 +233,8 @@ câmera ─► MediaPipe Face Landmarker (478 pontos, com íris)
 | `olhar/app.py` | laço principal |
 | `olhar/bandeja.py` | ícone na bandeja, menu, iniciar com o Windows, atalhos |
 | `olhar/escolha.py` | tela inicial com as 3 opções de câmera |
+| `olhar/atualizador.py` | procura e aplica versão nova ao abrir (git ou ZIP), protege `dados/` |
+| `olhar/novidades.py` | card "O que mudou" depois de uma atualização |
 | `modelos/face_landmarker.task` | modelo do Google MediaPipe (Apache 2.0) |
 
 A calibração fica em `dados/calibracao.json` e as escolhas do menu em `dados/config.json` (não vão
@@ -237,7 +247,7 @@ ajustes finos.
 .venv\Scripts\python -m unittest discover -s tests -t .
 ```
 
-São 48 testes, todos sem câmera nem celular: os gestos (sequências de piscadas sintéticas, incluindo
+São 56 testes, todos sem câmera nem celular: os gestos (sequências de piscadas sintéticas, incluindo
 piscadas normais, ruído de um quadro, olhos que não fecham juntos, olho fechado demais), as
 pálpebras (calibração por usuário, histerese, pico de reflexo), a geometria, a regressão, o
 filtro e o congelamento do cursor.
