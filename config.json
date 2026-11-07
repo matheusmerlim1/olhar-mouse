@@ -1,10 +1,11 @@
 {
   "_ajuda": "camera: 0 = webcam do PC; \"celular\" = camera do celular por QR code; 1 = segunda webcam ou DroidCam; ou URL de camera IP. olho: \"ambos\", \"esquerdo\" ou \"direito\". oculos: true filtra mais os picos causados por reflexo na lente (calibre usando os oculos). realce_contraste: true ajuda em ambiente escuro.",
-  "camera": "celular",
+  "camera": "usb",
   "olho": "ambos",
   "oculos": false,
   "realce_contraste": false,
   "mostrar_camera": false,
+  "perguntar_camera": true,
   "som": true,
   "pontos_calibracao": 13,
   "gestos": {

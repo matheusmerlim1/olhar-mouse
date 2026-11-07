@@ -18,17 +18,28 @@ cai onde você estava olhando antes de piscar.
 ## Como usar
 
 O programa roda **sem janela**, como o ditado por voz (projeto 24). Ao abrir, ele mostra só a
-calibração e depois fica apenas um **ícone de olho perto do relógio**.
+escolha da câmera e a calibração; depois fica apenas um **ícone de olho perto do relógio**.
 
-| Atalho | Câmera |
-|---|---|
-| `iniciar-webcam.bat` | primeira câmera do Windows (`camera: 0`) |
-| `iniciar-usb.bat` | celular Android **pelo cabo USB** (sem Wi-Fi, sem internet) |
-| `iniciar-celular.bat` | celular pelo Wi-Fi (QR code) |
-| `iniciar.bat` | a última câmera usada |
+**Para abrir:** ícone **Olhar-mouse** na Área de Trabalho ou no menu Iniciar. Se não existirem,
+rode `iniciar.bat` uma vez e use, no menu do ícone, *Criar atalhos*. O Windows costuma esconder
+ícones novos da bandeja na setinha **^** ao lado do relógio; arraste o olho dali para a barra de
+tarefas para deixá-lo sempre à vista.
 
-Na primeira vez o atalho cria o ambiente Python e instala as dependências (precisa do Python
-3.12, `py -3.12`).
+**Três opções de câmera**, escolhidas numa tela ao abrir (clique ou teclas 1, 2, 3; Enter repete
+a última):
+
+| | Opção | Quando usar |
+|---|---|---|
+| 1 | **Câmera do computador** | webcam ou outra câmera que o Windows enxergue (inclui celular em modo webcam USB) |
+| 2 | **Celular pelo QR code** | celular no mesmo Wi-Fi; nada para instalar |
+| 3 | **Celular pelo cabo USB** | Android; sem Wi-Fi e sem internet |
+
+Os atalhos `iniciar-webcam.bat`, `iniciar-celular.bat` e `iniciar-usb.bat` vão direto para a opção,
+sem perguntar. A abertura junto com o Windows usa a última escolhida. No menu do ícone, *Câmera*
+traz as mesmas três opções e *Perguntar ao abrir* (desmarcado, ele usa sempre a última).
+
+Na primeira vez o ambiente Python é criado e as dependências instaladas pelo `iniciar.bat` (precisa
+do Python 3.12, `py -3.12`).
 
 1. **Celular**: abre uma janela com o QR code (Wi-Fi) ou com as instruções do cabo (USB) (veja [Celular pelo Wi-Fi](#celular-pelo-wi-fi-qr-code-sem-instalar-nada) e [pelo cabo USB](#celular-pelo-cabo-usb-android-sem-wi-fi)).
 2. **Calibração** (só na primeira vez, ou quando a câmera, o olho ou os óculos mudam). A tela fica
@@ -45,7 +56,7 @@ encontrado · **azul** esperando o celular · **roxo** calibrando · **laranja**
 
 Menu do ícone (botão direito): pausar/retomar, recalibrar, mostrar a câmera, trocar entre webcam e
 celular, olho usado (os dois, só o esquerdo ou só o direito), uso óculos, bipes, iniciar com o
-Windows, liberar firewall para o celular, abrir o `config.json`, ver o registro, sair. As trocas
+Windows, criar atalhos, liberar firewall para o celular, abrir o `config.json`, ver o registro, sair. As trocas
 ficam gravadas no `config.json`.
 
 | Tecla | Função |
@@ -159,6 +170,7 @@ O clique sai 1,5 s depois da última piscada (é o tempo de saber se vem mais um
 | `oculos` | `false` | filtragem extra contra reflexo na lente |
 | `realce_contraste` | `false` | contraste local (CLAHE), para pouca luz |
 | `mostrar_camera` | `false` | abrir já com a janela da câmera |
+| `perguntar_camera` | `true` | mostrar a escolha das 3 câmeras ao abrir |
 | `som` | `true` | bipe no clique e na pausa |
 | `gestos.lento_min` / `lento_max` | `0.30` / `1.50` | duração (s) de uma piscada "lenta" |
 | `gestos.janela` | `1.50` | tempo máximo (s) entre as duas piscadas |
@@ -197,7 +209,8 @@ câmera ─► MediaPipe Face Landmarker (478 pontos, com íris)
 | `olhar/usb.py` | celular pelo cabo: ADB, túnel `adb reverse`, abre a página no celular |
 | `olhar/mouse.py` | mover e clicar (API do Windows) |
 | `olhar/app.py` | laço principal |
-| `olhar/bandeja.py` | ícone na bandeja, menu, iniciar com o Windows |
+| `olhar/bandeja.py` | ícone na bandeja, menu, iniciar com o Windows, atalhos |
+| `olhar/escolha.py` | tela inicial com as 3 opções de câmera |
 | `modelos/face_landmarker.task` | modelo do Google MediaPipe (Apache 2.0) |
 
 A calibração fica em `dados/calibracao.json` (não vai para o git; é de cada pessoa e de cada
@@ -209,7 +222,7 @@ máquina).
 .venv\Scripts\python -m unittest discover -s tests -t .
 ```
 
-São 40 testes, todos sem câmera nem celular: os gestos (sequências de piscadas sintéticas, incluindo
+São 48 testes, todos sem câmera nem celular: os gestos (sequências de piscadas sintéticas, incluindo
 piscadas normais, ruído de um quadro, olhos que não fecham juntos, olho fechado demais), as
 pálpebras (calibração por usuário, histerese, pico de reflexo), a geometria, a regressão, o
 filtro e o congelamento do cursor.

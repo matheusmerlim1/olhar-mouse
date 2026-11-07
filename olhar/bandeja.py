@@ -94,6 +94,52 @@ def definir_inicio_com_windows(ligar: bool, raiz: Path) -> None:
                 pass
 
 
+# ---------------------------------------------------------------- atalhos com ícone
+def gerar_ico(raiz: Path) -> Path:
+    """Ícone do olho (verde) em .ico, vários tamanhos, para os atalhos do Windows."""
+    destino = raiz / "olhar.ico"
+    desenhar_icone("seguindo", 256).save(destino, sizes=[(16, 16), (24, 24), (32, 32), (48, 48),
+                                                          (64, 64), (128, 128), (256, 256)])
+    return destino
+
+
+def pasta_atalhos() -> list[Path]:
+    """Área de Trabalho e menu Iniciar do usuário (com OneDrive, a Área de Trabalho muda de lugar)."""
+    import ctypes
+    from ctypes import wintypes
+    pastas = []
+    for csidl in (0x0010, 0x0002):  # CSIDL_DESKTOPDIRECTORY, CSIDL_PROGRAMS
+        buf = ctypes.create_unicode_buffer(wintypes.MAX_PATH)
+        if ctypes.windll.shell32.SHGetFolderPathW(None, csidl, None, 0, buf) == 0:
+            pastas.append(Path(buf.value))
+    return pastas
+
+
+def criar_atalhos(raiz: Path) -> list[Path]:
+    """Cria "Olhar-mouse.lnk" na Área de Trabalho e no menu Iniciar, com o ícone do olho.
+
+    Abre o pythonw direto (sem a janela preta do .bat) e mostra a escolha da câmera.
+    """
+    ico = gerar_ico(raiz)
+    pyw = raiz / ".venv" / "Scripts" / "pythonw.exe"
+    feitos = []
+    for pasta in pasta_atalhos():
+        lnk = pasta / "Olhar-mouse.lnk"
+        # caminhos com acento vão por variável de ambiente, sem brigar com aspas
+        env = dict(os.environ, OM_LNK=str(lnk), OM_ALVO=str(pyw), OM_PASTA=str(raiz), OM_ICO=str(ico))
+        script = ("$s = (New-Object -ComObject WScript.Shell).CreateShortcut($env:OM_LNK);"
+                  "$s.TargetPath = $env:OM_ALVO; $s.Arguments = '-m olhar';"
+                  "$s.WorkingDirectory = $env:OM_PASTA; $s.IconLocation = $env:OM_ICO + ',0';"
+                  "$s.Description = 'Controla o mouse com o olhar'; $s.Save()")
+        r = subprocess.run(["powershell", "-NoProfile", "-Command", script], env=env, capture_output=True,
+                           text=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        if r.returncode == 0 and lnk.exists():
+            feitos.append(lnk)
+        else:
+            print(f"Atalho não criado em {pasta}: {r.stderr.strip()}")
+    return feitos
+
+
 class Bandeja:
     def __init__(self, raiz: Path, cfg: dict, controle: Controle, salvar_cfg):
         import pystray
@@ -154,6 +200,12 @@ class Bandeja:
         definir_inicio_com_windows(not inicia_com_windows(), self.raiz)
         self._icone.update_menu()
 
+    def _atalhos(self, *_):
+        feitos = criar_atalhos(self.raiz)
+        self.notificar("Atalhos criados" if feitos else "Atalhos não criados",
+                       "Ícone \"Olhar-mouse\" na Área de Trabalho e no menu Iniciar." if feitos
+                       else "Veja o registro (dados/olhar.log).")
+
     def _firewall(self, *_):
         script = self.raiz / "ferramentas" / "liberar-firewall.ps1"
         # o próprio script pede a confirmação de administrador do Windows
@@ -167,20 +219,25 @@ class Bandeja:
         """Submenu gerado na hora: câmeras do Windows pelo nome + modos do celular."""
         import pystray
         M = pystray.MenuItem
+        from .escolha import eh_virtual
         atual = self.cfg.get("camera")
-        itens = []
+        itens = [M("1. Câmera do computador:", None, enabled=False)]
         for i, nome in enumerate(self._cameras):
             marcado = atual == nome or (isinstance(atual, int) and atual == i)
-            itens.append(M(nome, self._mudar("camera", nome), radio=True,
+            rotulo = f"     {nome}" + ("  (virtual, não filma o rosto)" if eh_virtual(nome) else "")
+            itens.append(M(rotulo, self._mudar("camera", nome), radio=True,
                            checked=lambda _, m=marcado: m))
         if not self._cameras:
-            itens.append(M("(nenhuma câmera no Windows)", None, enabled=False))
+            itens.append(M("     (nenhuma câmera encontrada)", None, enabled=False))
         itens += [
             pystray.Menu.SEPARATOR,
-            M("Celular pelo cabo USB (Android)", self._mudar("camera", "usb"), radio=True,
-              checked=lambda _: str(self.cfg.get("camera")).lower() == "usb"),
-            M("Celular pelo Wi-Fi (QR code)", self._mudar("camera", "celular"), radio=True,
+            M("2. Celular pelo QR code (Wi-Fi)", self._mudar("camera", "celular"), radio=True,
               checked=lambda _: str(self.cfg.get("camera")).lower() == "celular"),
+            M("3. Celular pelo cabo USB (Android)", self._mudar("camera", "usb"), radio=True,
+              checked=lambda _: str(self.cfg.get("camera")).lower() == "usb"),
+            pystray.Menu.SEPARATOR,
+            M("Perguntar ao abrir", self._alternar("perguntar_camera", reinicia=False),
+              checked=lambda _: bool(self.cfg.get("perguntar_camera", True))),
         ]
         return itens
 
@@ -226,6 +283,7 @@ class Bandeja:
             M("Bipes", self._alternar("som", reinicia=False), checked=lambda _: bool(self.cfg.get("som"))),
             Sep,
             M("Iniciar com o Windows", self._inicio, checked=lambda _: inicia_com_windows()),
+            M("Criar atalhos (Área de Trabalho e menu Iniciar)", self._atalhos),
             M("Liberar firewall para o celular…", self._firewall),
             M("Abrir configurações (config.json)", lambda *_: os.startfile(self.raiz / "config.json")),
             M("Ver registro", lambda *_: os.startfile(self.raiz / "dados" / "olhar.log")),

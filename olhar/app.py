@@ -31,6 +31,7 @@ PADRAO = {
     "oculos": False,
     "realce_contraste": False,
     "mostrar_camera": False,
+    "perguntar_camera": True,
     "som": True,
     "pontos_calibracao": 13,
     "gestos": {"lento_min": 0.30, "lento_max": 1.50, "janela": 1.50},
@@ -57,7 +58,7 @@ def ler_config(caminho: Path) -> dict:
 def salvar_config(cfg: dict, caminho: Path) -> None:
     """Grava as escolhas do menu no config.json, preservando a ajuda e a ordem."""
     dado = json.loads(caminho.read_text(encoding="utf-8")) if caminho.exists() else {}
-    for k in ("camera", "olho", "oculos", "som", "mostrar_camera", "realce_contraste"):
+    for k in ("camera", "olho", "oculos", "som", "mostrar_camera", "realce_contraste", "perguntar_camera"):
         if k in cfg:
             dado[k] = cfg[k]
     caminho.write_text(json.dumps(dado, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -400,6 +401,19 @@ def main(argv=None):
     ui = _Console() if args.console else Bandeja(RAIZ, cfg, ctl, lambda c: salvar_config(c, arq_cfg))
     forcar = args.calibrar
     try:
+        # três opções de câmera: computador, QR code (Wi-Fi) ou cabo USB.
+        # Pergunta ao abrir, a não ser que o atalho já diga qual (--camera) ou
+        # que seja a abertura automática com o Windows (usa a última).
+        if args.camera is None and args.pasta is None and cfg.get("perguntar_camera", True):
+            from .camera import listar_cameras
+            from .escolha import escolher_camera
+            try:
+                cfg["camera"] = escolher_camera(listar_cameras(), cfg["camera"])
+            except Cancelado:
+                print("Saiu na escolha da câmera.")
+                return
+            salvar_config(cfg, arq_cfg)
+            print(f"Câmera escolhida: {cfg['camera']}")
         while not ctl.sair:
             ctl.reiniciar = False
             try:
