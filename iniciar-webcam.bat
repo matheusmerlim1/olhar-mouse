@@ -1,5 +1,5 @@
 @echo off
-rem Olhar-mouse com a webcam do computador.
+rem Olhar-mouse com a camera do computador (a primeira camera real; virtuais como a do OBS nao contam).
 rem Abre sem janela: fica so o icone do olho perto do relogio. Na primeira vez instala o ambiente Python.
 rem (cada atalho e completo: nesta pasta com acento o "call outro.bat" do Windows falha)
 chcp 65001 >nul
@@ -9,7 +9,7 @@ if not exist ".venv\Scripts\pythonw.exe" (
   py -3.12 -m venv .venv || goto erro
   ".venv\Scripts\python.exe" -m pip install --disable-pip-version-check -r requirements.txt || goto erro
 )
-start "" ".venv\Scripts\pythonw.exe" -m olhar --camera 0 %*
+start "" ".venv\Scripts\pythonw.exe" -m olhar --camera computador %*
 exit /b 0
 :erro
 echo.

@@ -18,7 +18,7 @@ def listar_cameras() -> list[str]:
     """Nomes das câmeras do Windows, na mesma ordem dos números do OpenCV (DirectShow).
 
     Inclui celular ligado como webcam USB (modo "Webcam" do Android 14+),
-    DroidCam, OBS Virtual Camera etc.
+    DroidCam etc. (câmeras virtuais, como a do OBS, são filtradas na escolha).
     """
     if sys.platform != "win32":
         return []

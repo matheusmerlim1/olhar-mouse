@@ -21,9 +21,13 @@ O programa roda **sem janela**, como o ditado por voz (projeto 24). Ao abrir, el
 escolha da câmera e a calibração; depois fica apenas um **ícone de olho perto do relógio**.
 
 **Para abrir:** ícone **Olhar-mouse** na Área de Trabalho ou no menu Iniciar. Se não existirem,
-rode `iniciar.bat` uma vez e use, no menu do ícone, *Criar atalhos*. O Windows costuma esconder
-ícones novos da bandeja na setinha **^** ao lado do relógio; arraste o olho dali para a barra de
-tarefas para deixá-lo sempre à vista.
+rode `iniciar.bat` uma vez e use, no menu do ícone, *Criar atalhos*.
+
+O olho fica junto com os outros ícones escondidos, na setinha **^** ao lado do relógio (como o
+ditado por voz); se quiser à vista, arraste-o dali para a barra de tarefas. Fechar a tela de
+escolha ou cancelar a calibração **não fecha o programa**: ele fica parado na bandeja (olho
+cinza riscado). Clique duas vezes no olho para escolher a câmera e começar. Para fechar de
+vez: menu do ícone › *Sair*.
 
 **Três opções de câmera**, escolhidas numa tela ao abrir (clique ou teclas 1, 2, 3; Enter repete
 a última):
@@ -51,10 +55,10 @@ do Python 3.12, `py -3.12`).
    avisa com um bipe grave e recomeça.
 3. Pronto: a tela volta ao normal e o cursor segue o olhar, em qualquer programa.
 
-Cor do ícone: **verde** seguindo o olhar · **cinza riscado** pausado · **vermelho** rosto não
+Cor do ícone: **verde** seguindo o olhar · **cinza riscado** pausado ou parado · **vermelho** rosto não
 encontrado · **azul** esperando o celular · **roxo** calibrando · **laranja** carregando.
 
-Menu do ícone (botão direito): pausar/retomar, recalibrar, mostrar a câmera, trocar entre webcam e
+Menu do ícone (botão direito): escolher câmera e começar (quando parado), pausar/retomar, trocar de câmera, recalibrar, mostrar a câmera, trocar entre webcam e
 celular, olho usado (os dois, só o esquerdo ou só o direito), uso óculos, bipes, iniciar com o
 Windows, criar atalhos, liberar firewall para o celular, abrir o `config.json`, ver o registro, sair. As trocas
 ficam gravadas no `config.json`.

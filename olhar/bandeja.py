@@ -21,6 +21,7 @@ CORES = {
     "calibrando": "#7c3aed",   # roxo
     "seguindo": "#16a34a",     # verde
     "pausado": "#6b7280",      # cinza
+    "parado": "#475569",       # cinza-azulado: sem câmera ligada, esperando a escolha
     "sem_rosto": "#dc2626",    # vermelho
 }
 TEXTO = {
@@ -29,6 +30,7 @@ TEXTO = {
     "calibrando": "calibrando",
     "seguindo": "seguindo o olhar",
     "pausado": "PAUSADO (F9 retoma)",
+    "parado": "parado — clique para escolher a câmera",
     "sem_rosto": "rosto não encontrado",
 }
 
@@ -45,7 +47,7 @@ def desenhar_icone(estado: str, tamanho: int = 64) -> Image.Image:
     d.chord((36, 6, 220, 186), start=20, end=160, fill="white")
     d.ellipse((92, 92, 164, 164), fill=cor)            # íris
     d.ellipse((114, 114, 142, 142), fill="#111111")    # pupila
-    if estado == "pausado":
+    if estado in ("pausado", "parado"):
         d.line((60, 60, 196, 196), fill=cor, width=30)
         d.line((60, 60, 196, 196), fill="white", width=14)
     return img.resize((tamanho, tamanho), Image.LANCZOS)
@@ -59,6 +61,8 @@ class Controle:
         self.recalibrar = False
         self.mostrar_camera = False
         self.reiniciar = False      # config mudou (câmera, óculos, olho): reabre tudo
+        self.escolher = False       # mostrar a tela das 3 opções de câmera
+        self.parado = False         # na bandeja, sem câmera ligada (saiu da escolha/calibração)
         self.sair = False
 
 
@@ -148,7 +152,18 @@ class Bandeja:
         self._cameras: list[str] = []
         self._icone = pystray.Icon("olhar-mouse", desenhar_icone(self.estado),
                                    "Olhar-mouse — carregando…", menu=self._menu())
-        self._icone.run_detached()
+        # o ícone roda numa thread só dele, com o próprio laço de mensagens do
+        # Windows. (run_detached exige que outra parte do programa trate as
+        # mensagens — no ditado é o tkinter; aqui ninguém faz isso e o ícone
+        # nunca aparecia na bandeja.)
+        self._pronto = threading.Event()
+
+        def preparar(icone):
+            icone.visible = True
+            self._pronto.set()
+
+        threading.Thread(target=self._icone.run, args=(preparar,), daemon=True, name="bandeja").start()
+        self._pronto.wait(5)
         threading.Thread(target=self._vigiar_cameras, daemon=True).start()
 
     # ----- estado e avisos (chamados pelo laço principal)
@@ -170,8 +185,15 @@ class Bandeja:
         self._icone.stop()
 
     # ----- ações do menu (rodam na thread do ícone: só mexem em bandeiras)
-    def _pausar(self, *_):
-        self.ctl.pausado = not self.ctl.pausado
+    def _principal(self, *_):
+        """Clique duplo no ícone: parado → escolher a câmera; rodando → pausar/retomar."""
+        if self.ctl.parado:
+            self.ctl.escolher = True
+        else:
+            self.ctl.pausado = not self.ctl.pausado
+
+    def _escolher(self, *_):
+        self.ctl.escolher = True
 
     def _recalibrar(self, *_):
         self.ctl.recalibrar = True
@@ -222,12 +244,15 @@ class Bandeja:
         from .escolha import eh_virtual
         atual = self.cfg.get("camera")
         itens = [M("1. Câmera do computador:", None, enabled=False)]
+        reais = 0
         for i, nome in enumerate(self._cameras):
+            if eh_virtual(nome):
+                continue  # OBS Virtual Camera e afins não filmam o rosto: não são oferecidas
+            reais += 1
             marcado = atual == nome or (isinstance(atual, int) and atual == i)
-            rotulo = f"     {nome}" + ("  (virtual, não filma o rosto)" if eh_virtual(nome) else "")
-            itens.append(M(rotulo, self._mudar("camera", nome), radio=True,
+            itens.append(M(f"     {nome}", self._mudar("camera", nome), radio=True,
                            checked=lambda _, m=marcado: m))
-        if not self._cameras:
+        if not reais:
             itens.append(M("     (nenhuma câmera encontrada)", None, enabled=False))
         itens += [
             pystray.Menu.SEPARATOR,
@@ -266,7 +291,9 @@ class Bandeja:
         return pystray.Menu(
             M(lambda _: self._icone.title if getattr(self, "_icone", None) else "Olhar-mouse", None, enabled=False),
             Sep,
-            M(lambda _: "Retomar (F9)" if self.ctl.pausado else "Pausar (F9)", self._pausar, default=True),
+            M(lambda _: "Escolher câmera e começar…" if self.ctl.parado
+              else ("Retomar (F9)" if self.ctl.pausado else "Pausar (F9)"), self._principal, default=True),
+            M("Trocar de câmera…", self._escolher, visible=lambda _: not self.ctl.parado),
             M("Recalibrar (F10)", self._recalibrar),
             M("Mostrar a câmera", self._camera_janela, checked=lambda _: self.ctl.mostrar_camera),
             Sep,

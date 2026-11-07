@@ -21,16 +21,19 @@ def eh_virtual(nome: str) -> bool:
     return any(v in n for v in VIRTUAIS)
 
 
-def camera_do_computador(nomes: list[str], atual) -> str | int | None:
-    """Que câmera usar na opção 1: a atual se for do computador, senão a primeira não virtual."""
-    if isinstance(atual, str) and atual in nomes:
+def cameras_reais(nomes: list[str]) -> list[str]:
+    """Só câmeras que filmam: as virtuais (OBS etc.) não são oferecidas."""
+    return [n for n in nomes if not eh_virtual(n)]
+
+
+def camera_do_computador(nomes: list[str], atual) -> str | None:
+    """Que câmera usar na opção 1: a atual se for uma câmera real, senão a primeira real."""
+    reais = cameras_reais(nomes)
+    if isinstance(atual, str) and atual in reais:
         return atual
-    if isinstance(atual, int) and 0 <= atual < len(nomes):
+    if isinstance(atual, int) and 0 <= atual < len(nomes) and nomes[atual] in reais:
         return nomes[atual]
-    reais = [n for n in nomes if not eh_virtual(n)]
-    if reais:
-        return reais[0]
-    return nomes[0] if nomes else None
+    return reais[0] if reais else None
 
 
 def opcao_de(camera) -> int:
@@ -49,25 +52,25 @@ def escolher_camera(nomes: list[str], atual):
 
     w, h = 960, 560
     pc = camera_do_computador(nomes, atual)
-    if pc is None:
-        sub_pc, aviso_pc = "nenhuma camera encontrada no Windows", True
-    elif eh_virtual(pc) and all(eh_virtual(n) for n in nomes):
-        sub_pc, aviso_pc = f"so ha '{pc}' (camera virtual, nao filma o rosto)", True
-    else:
-        sub_pc, aviso_pc = pc, False
+    sem_pc = pc is None   # sem câmera real: a opção 1 fica apagada e não pode ser escolhida
     opcoes = [
-        ("1", "Camera do computador", _sem_acento(sub_pc), aviso_pc),
-        ("2", "Celular pelo QR code", "Wi-Fi: o celular le o QR e abre a pagina", False),
-        ("3", "Celular pelo cabo USB", "Android: sem Wi-Fi e sem internet", False),
+        ("1", "Camera do computador", "nenhuma camera encontrada no computador" if sem_pc else _sem_acento(pc)),
+        ("2", "Celular pelo QR code", "Wi-Fi: o celular le o QR e abre a pagina"),
+        ("3", "Celular pelo cabo USB", "Android: sem Wi-Fi e sem internet"),
     ]
     marcada = opcao_de(atual)
+    if marcada == 1 and sem_pc:
+        marcada = None
     botoes = [(40, 120 + i * 130, w - 40, 120 + i * 130 + 110) for i in range(3)]
     escolha = {"valor": None, "sobre": None}
 
+    def valida(n):
+        return n is not None and not (n == 1 and sem_pc)
+
     def ao_mouse(evento, x, y, *_):
         dentro = next((i for i, (x0, y0, x1, y1) in enumerate(botoes) if x0 <= x <= x1 and y0 <= y <= y1), None)
-        escolha["sobre"] = dentro
-        if evento == cv2.EVENT_LBUTTONUP and dentro is not None:
+        escolha["sobre"] = dentro if valida(None if dentro is None else dentro + 1) else None
+        if evento == cv2.EVENT_LBUTTONUP and escolha["sobre"] is not None:
             escolha["valor"] = dentro + 1
 
     cv2.namedWindow(JANELA, cv2.WINDOW_AUTOSIZE)
@@ -78,24 +81,27 @@ def escolher_camera(nomes: list[str], atual):
         while escolha["valor"] is None:
             img = np.full((h, w, 3), 24, np.uint8)
             cv2.putText(img, "Qual camera usar?", (40, 70), fonte, 1.1, (240, 240, 240), 2, cv2.LINE_AA)
-            for i, ((tecla, titulo, sub, aviso), (x0, y0, x1, y1)) in enumerate(zip(opcoes, botoes)):
+            for i, ((tecla, titulo, sub), (x0, y0, x1, y1)) in enumerate(zip(opcoes, botoes)):
+                apagada = not valida(i + 1)
                 destaque = escolha["sobre"] == i
-                fundo = (70, 60, 40) if destaque else (45, 45, 45)
+                fundo = (32, 32, 32) if apagada else (70, 60, 40) if destaque else (45, 45, 45)
                 cv2.rectangle(img, (x0, y0), (x1, y1), fundo, -1)
-                borda = (255, 170, 60) if i + 1 == marcada else (90, 90, 90)
+                borda = (255, 170, 60) if i + 1 == marcada else (60, 60, 60) if apagada else (90, 90, 90)
                 cv2.rectangle(img, (x0, y0), (x1, y1), borda, 2)
-                cv2.circle(img, (x0 + 55, y0 + 55), 30, (255, 170, 60), -1, cv2.LINE_AA)
+                cv2.circle(img, (x0 + 55, y0 + 55), 30, (80, 80, 80) if apagada else (255, 170, 60), -1, cv2.LINE_AA)
                 cv2.putText(img, tecla, (x0 + 44, y0 + 68), fonte, 1.1, (20, 20, 20), 3, cv2.LINE_AA)
-                cv2.putText(img, titulo, (x0 + 110, y0 + 48), fonte, 0.95, (245, 245, 245), 2, cv2.LINE_AA)
+                cv2.putText(img, titulo, (x0 + 110, y0 + 48), fonte, 0.95,
+                            (110, 110, 110) if apagada else (245, 245, 245), 2, cv2.LINE_AA)
                 cv2.putText(img, sub, (x0 + 110, y0 + 85), fonte, 0.6,
-                            (90, 160, 255) if aviso else (190, 190, 190), 1, cv2.LINE_AA)
-            cv2.putText(img, "Clique ou tecle 1, 2 ou 3.  Enter: a ultima usada (destacada).  Esc: sair",
-                        (40, h - 25), fonte, 0.55, (150, 150, 150), 1, cv2.LINE_AA)
+                            (110, 110, 110) if apagada else (190, 190, 190), 1, cv2.LINE_AA)
+            rodape = "Clique ou tecle 1, 2 ou 3." if marcada is None else \
+                "Clique ou tecle 1, 2 ou 3.  Enter: a ultima usada (destacada)."
+            cv2.putText(img, rodape + "  Esc: sair", (40, h - 25), fonte, 0.55, (150, 150, 150), 1, cv2.LINE_AA)
             cv2.imshow(JANELA, img)
             k = cv2.waitKey(30) & 0xFF
-            if k in (ord("1"), ord("2"), ord("3")):
+            if k in (ord("1"), ord("2"), ord("3")) and valida(k - ord("0")):
                 escolha["valor"] = k - ord("0")
-            elif k in (13, 10):
+            elif k in (13, 10) and valida(marcada):
                 escolha["valor"] = marcada
             elif k == 27 or cv2.getWindowProperty(JANELA, cv2.WND_PROP_VISIBLE) < 1:
                 raise Cancelado
@@ -109,4 +115,4 @@ def escolher_camera(nomes: list[str], atual):
         return "celular"
     if v == 3:
         return "usb"
-    return pc if pc is not None else 0
+    return pc

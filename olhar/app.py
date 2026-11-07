@@ -168,7 +168,7 @@ def executar(cfg: dict, arq_calib: Path, ctl, ui, forcar_calibracao: bool = Fals
     console = getattr(ui, "console", False)
 
     def parar():
-        return ctl.sair or ctl.reiniciar
+        return ctl.sair or ctl.reiniciar or ctl.escolher
 
     modo = str(cfg["camera"]).strip().lower()
     celular = modo in ("celular", "usb")
@@ -392,7 +392,20 @@ def main(argv=None):
     arq_cfg = Path(args.config)
     cfg = ler_config(arq_cfg)
     if args.camera is not None:
-        cfg["camera"] = int(args.camera) if args.camera.strip().isdigit() else args.camera
+        if args.camera.strip().lower() == "computador":
+            # primeira câmera real do Windows (as virtuais, como a do OBS, não contam)
+            from .camera import listar_cameras
+            from .escolha import camera_do_computador
+            escolhida = camera_do_computador(listar_cameras(), cfg["camera"])
+            if escolhida is None:
+                import ctypes
+                ctypes.windll.user32.MessageBoxW(
+                    None, "Nenhuma câmera encontrada no computador.\nUse o celular: iniciar-usb.bat (cabo) "
+                          "ou iniciar-celular.bat (QR code).", "Olhar-mouse", 0x30)
+                return
+            cfg["camera"] = escolhida
+        else:
+            cfg["camera"] = int(args.camera) if args.camera.strip().isdigit() else args.camera
         salvar_config(cfg, arq_cfg)
 
     from .bandeja import Bandeja, Controle
@@ -400,35 +413,61 @@ def main(argv=None):
     ctl.mostrar_camera = bool(cfg["mostrar_camera"]) or args.console
     ui = _Console() if args.console else Bandeja(RAIZ, cfg, ctl, lambda c: salvar_config(c, arq_cfg))
     forcar = args.calibrar
+    def perguntar() -> bool:
+        """Tela das três opções: computador, QR code (Wi-Fi) ou cabo USB."""
+        from .camera import listar_cameras
+        from .escolha import escolher_camera
+        try:
+            cfg["camera"] = escolher_camera(listar_cameras(), cfg["camera"])
+        except Cancelado:
+            print("Saiu na escolha da câmera; fica parado na bandeja.")
+            return False
+        salvar_config(cfg, arq_cfg)
+        print(f"Câmera escolhida: {cfg['camera']}")
+        return True
+
     try:
-        # três opções de câmera: computador, QR code (Wi-Fi) ou cabo USB.
         # Pergunta ao abrir, a não ser que o atalho já diga qual (--camera) ou
         # que seja a abertura automática com o Windows (usa a última).
         if args.camera is None and args.pasta is None and cfg.get("perguntar_camera", True):
-            from .camera import listar_cameras
-            from .escolha import escolher_camera
-            try:
-                cfg["camera"] = escolher_camera(listar_cameras(), cfg["camera"])
-            except Cancelado:
-                print("Saiu na escolha da câmera.")
-                return
-            salvar_config(cfg, arq_cfg)
-            print(f"Câmera escolhida: {cfg['camera']}")
+            ui.definir_estado("parado")
+            ctl.parado = not perguntar()
+        avisou_parado = False
         while not ctl.sair:
+            # Como o ditado: sair da escolha ou cancelar a calibração NÃO fecha o
+            # programa — ele fica parado na bandeja esperando a pessoa escolher.
+            if ctl.parado:
+                ui.definir_estado("parado")
+                if not avisou_parado:
+                    ui.notificar("Olhar-mouse parado",
+                                 "Clique duas vezes no ícone do olho (perto do relógio) para escolher a câmera.")
+                    avisou_parado = True
+                while not (ctl.sair or ctl.escolher or ctl.reiniciar):
+                    time.sleep(0.2)
+                if ctl.sair:
+                    break
+                if ctl.escolher:
+                    ctl.escolher = False
+                    if not perguntar():
+                        continue
+                ctl.parado = False
             ctl.reiniciar = False
             try:
                 executar(cfg, RAIZ / "dados" / "calibracao.json", ctl, ui, forcar)
             except Cancelado:
-                print("Cancelado pelo usuário; encerrando.")
-                ctl.sair = True
+                print("Cancelado pelo usuário; fica parado na bandeja.")
+                ctl.parado = True
+                continue
             except Exception as e:
                 import traceback
                 traceback.print_exc()
                 ui.notificar("Olhar-mouse: erro", str(e) or e.__class__.__name__)
-                time.sleep(4)  # dá tempo de a notificação aparecer
-                ctl.sair = True
+                ctl.parado = True
+                continue
             forcar = False
-            if not ctl.reiniciar:
+            if ctl.escolher:           # "Trocar de câmera…" no menu
+                ctl.parado = True
+            elif not ctl.reiniciar:    # saiu pelo menu
                 break
     finally:
         ui.fechar()
