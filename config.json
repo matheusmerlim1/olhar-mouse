@@ -13,8 +13,5 @@
     "lento_max": 1.5,
     "janela": 1.5
   },
-  "suavizacao": {
-    "min_cutoff": 0.6,
-    "beta": 0.004
-  }
+  "estabilidade": "media"
 }

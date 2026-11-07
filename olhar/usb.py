@@ -105,12 +105,18 @@ class AdbUsb:
                 return "nao_autorizado", a
         return "sem_aparelho", None
 
+    def tunel(self, serial: str, porta: int) -> None:
+        self._rodar("reverse", f"tcp:{porta}", f"tcp:{porta}", serial=serial)
+
     def preparar(self, serial: str, porta: int, url: str) -> None:
         """Cria o túnel 127.0.0.1:porta (celular) → PC e abre a página no navegador do celular."""
         self._rodar("reverse", f"tcp:{porta}", f"tcp:{porta}", serial=serial)
         # acorda a tela antes de abrir o navegador
         self._rodar("shell", "input", "keyevent", "KEYCODE_WAKEUP", serial=serial)
-        self._rodar("shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", url, serial=serial)
+        # application_id: o Chrome reaproveita a MESMA aba em vez de abrir uma nova a cada
+        # reconexão (chegaram a ficar 15 abas abertas e o Chrome do celular travou)
+        self._rodar("shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", url,
+                    "--es", "com.android.browser.application_id", "olhar-mouse", serial=serial)
 
     def desfazer(self, porta: int) -> None:
         try:
@@ -146,7 +152,11 @@ def aguardar_usb(cam, adb: AdbUsb, janela: str, deve_parar=lambda: False) -> boo
                 estado, aparelho = adb.estado()
                 prox_consulta = agora + 1.0
                 if estado == "pronto" and preparado_em != aparelho["serial"]:
-                    adb.preparar(aparelho["serial"], cam.porta, cam.url)
+                    if cam.conectado(2.0):
+                        # a página já está mandando imagem: só refaz o túnel, sem abrir de novo
+                        adb.tunel(aparelho["serial"], cam.porta)
+                    else:
+                        adb.preparar(aparelho["serial"], cam.porta, cam.url)
                     preparado_em = aparelho["serial"]
                 elif estado != "pronto":
                     preparado_em = None

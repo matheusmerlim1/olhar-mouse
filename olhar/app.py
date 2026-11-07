@@ -19,7 +19,7 @@ from . import mouse
 from .calibracao import Cancelado, bipe, calibrar
 from .camera import Detector, abrir_camera
 from .celular import CameraCelular, aguardar_celular
-from .filtro import OneEuro2D
+from .filtro import ESTABILIDADE, Estabilizador, MedianaVetor, OneEuro2D
 from .gestos import ConfigGestos, Gestos, Palpebras
 from .modelo_olhar import carregar, salvar
 from .olhos import OLHO, vetor_olhar
@@ -36,13 +36,14 @@ PADRAO = {
     "som": True,
     "pontos_calibracao": 13,
     "gestos": {"lento_min": 0.30, "lento_max": 1.50, "janela": 1.50},
-    "suavizacao": {"min_cutoff": 0.6, "beta": 0.004},
+    "estabilidade": "media",   # baixa / media / alta (menu "Estabilidade do cursor")
 }
 JANELA = "olhar-mouse - camera (Esc fecha, P pausa, C calibra)"
 JANELA_QR = "Celular - olhar-mouse"
 
 
-ESCOLHAS_DO_MENU = ("camera", "olho", "oculos", "som", "mostrar_camera", "realce_contraste", "perguntar_camera")
+ESCOLHAS_DO_MENU = ("camera", "olho", "oculos", "som", "mostrar_camera", "realce_contraste", "perguntar_camera",
+                    "estabilidade")
 
 
 def ler_config(caminho: Path, pessoal: Path | None = None) -> dict:
@@ -83,6 +84,22 @@ def montar_gestos(cfg: dict) -> tuple[ConfigGestos, int]:
         g.estabilidade = max(g.estabilidade, 0.09)
         mediana = 5
     return g, mediana
+
+
+class Suavizador:
+    """Do vetor do olhar ao ponto do cursor, sem tremer:
+    mediana dos últimos quadros → regressão → filtro One Euro → zona de repouso."""
+
+    def __init__(self, nivel: str):
+        p = ESTABILIDADE.get(nivel, ESTABILIDADE["media"])
+        self.mediana = MedianaVetor(p["mediana"])
+        self.euro = OneEuro2D(min_cutoff=p["min_cutoff"], beta=p["beta"])
+        self.repouso = Estabilizador(raio=p["raio"])
+
+    def __call__(self, vetor, modelo, t: float) -> tuple[float, float]:
+        alvo = modelo.prever(self.mediana(vetor))
+        x, y = self.euro(float(alvo[0]), float(alvo[1]), t)
+        return self.repouso(x, y, t)
 
 
 class Congelador:
@@ -240,7 +257,7 @@ def executar(cfg: dict, arq_calib: Path, ctl, ui, forcar_calibracao: bool = Fals
 
         def novo_estado():
             return (Palpebras(calib_palp, janela_mediana=mediana), Gestos(cfg_g),
-                    OneEuro2D(**cfg["suavizacao"]), Congelador())
+                    Suavizador(cfg.get("estabilidade", "media")), Congelador())
 
         palp, gestos, filtro, cong = novo_estado()
         sem_rosto_desde = None
@@ -304,8 +321,7 @@ def executar(cfg: dict, arq_calib: Path, ctl, ui, forcar_calibracao: bool = Fals
 
                 if not ctl.pausado:
                     if congelado is None:
-                        alvo = modelo.prever(vetor_olhar(m, olho))
-                        x, y = filtro(float(alvo[0]), float(alvo[1]), t)
+                        x, y = filtro(vetor_olhar(m, olho), modelo, t)
                         x = int(np.clip(x, 0, tela[0] - 1))
                         y = int(np.clip(y, 0, tela[1] - 1))
                         cong.registrar(t, x, y)
@@ -347,6 +363,10 @@ def executar(cfg: dict, arq_calib: Path, ctl, ui, forcar_calibracao: bool = Fals
             if previa_aberta and not ctl.mostrar_camera:
                 _fechar_janela(JANELA)
                 previa_aberta = False
+
+            if ctl.refiltrar:          # mudou a estabilidade no menu
+                ctl.refiltrar = False
+                filtro = Suavizador(cfg.get("estabilidade", "media"))
 
             if ctl.recalibrar:
                 ctl.recalibrar = False

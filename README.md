@@ -196,8 +196,7 @@ O clique sai 1,5 s depois da última piscada (é o tempo de saber se vem mais um
 | `som` | `true` | bipe no clique e na pausa |
 | `gestos.lento_min` / `lento_max` | `0.30` / `1.50` | duração (s) de uma piscada "lenta" |
 | `gestos.janela` | `1.50` | tempo máximo (s) entre as duas piscadas |
-| `suavizacao.min_cutoff` | `0.6` | menor = cursor mais estável e mais lento |
-| `suavizacao.beta` | `0.004` | maior = cursor responde mais rápido a movimentos grandes |
+| `estabilidade` | `"media"` | `"baixa"` (mais rápido), `"media"` ou `"alta"` (mais firme); também pelo menu |
 
 Mudou de tela, de olho ou o modo óculos? O programa percebe e calibra de novo sozinho.
 

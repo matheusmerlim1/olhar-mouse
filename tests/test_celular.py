@@ -18,8 +18,11 @@ SEM_VERIFICAR.check_hostname = False
 SEM_VERIFICAR.verify_mode = ssl.CERT_NONE
 
 
-def enviar(url, dados=JPEG, ctx=None):
-    req = urllib.request.Request(url, data=dados, headers={"Content-Type": "image/jpeg"})
+def enviar(url, dados=JPEG, ctx=None, sessao="aba-teste"):
+    cab = {"Content-Type": "image/jpeg"}
+    if sessao:
+        cab["X-Sessao"] = sessao
+    req = urllib.request.Request(url, data=dados, headers=cab)
     return urllib.request.urlopen(req, context=ctx, timeout=5).status
 
 
@@ -49,9 +52,24 @@ class TestCameraUsb(unittest.TestCase):
             enviar(base + "/errado/quadro")
         self.assertEqual(e.exception.code, 404)
 
+    def test_so_a_aba_mais_nova_vale(self):
+        url = self.cam.url + "/quadro"
+        self.assertEqual(enviar(url, sessao="aba1"), 204)
+        self.assertEqual(enviar(url, sessao="aba2"), 204)      # abriu outra aba: ela passa a valer
+        with self.assertRaises(urllib.error.HTTPError) as e:
+            enviar(url, sessao="aba1")                           # a antiga é mandada parar
+        self.assertEqual(e.exception.code, 409)
+        self.assertEqual(enviar(url, sessao="aba2"), 204)
+        with self.assertRaises(urllib.error.HTTPError) as e:
+            enviar(url, sessao="")                               # página antiga, sem sessão
+        self.assertEqual(e.exception.code, 409)
+        self.assertEqual(self.cam.recebidos, 3)
+
     def test_pagina_pede_camera(self):
         pag = urllib.request.urlopen(self.cam.url, timeout=5).read().decode("utf-8")
         self.assertIn("getUserMedia", pag)
+        self.assertIn("X-Sessao", pag)
+        self.assertIn("document.hidden", pag)
 
 
 class TestCameraWifi(unittest.TestCase):

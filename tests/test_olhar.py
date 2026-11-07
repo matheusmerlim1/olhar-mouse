@@ -143,3 +143,48 @@ class TestCongelador(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestEstabilidade(unittest.TestCase):
+    """Olhar parado num ponto, com o ruído típico da íris: o cursor não pode tremer.
+    Testa o caminho inteiro do app (mediana → regressão → One Euro → zona de repouso)."""
+
+    class ModeloIdentidade:
+        def prever(self, v):
+            return np.asarray(v[:2], float)
+
+    def simular(self, nivel, alvos, ruido=35, seed=3):
+        from olhar.app import Suavizador
+        rng = np.random.default_rng(seed)
+        s, m = Suavizador(nivel), self.ModeloIdentidade()
+        return np.array([s([x + rng.normal(0, ruido), y + rng.normal(0, ruido)], m, i / 30)
+                         for i, (x, y) in enumerate(alvos)])
+
+    def test_parado_nao_treme(self):
+        alvos = [(900, 500)] * 150                      # 5 s olhando o mesmo ponto
+        resumo = []
+        for nivel in ("baixa", "media", "alta"):
+            sai = self.simular(nivel, alvos)[30:]
+            passos = np.hypot(*np.diff(sai, axis=0).T)
+            mexeu = int((passos > 0.5).sum())
+            resumo.append(f"{nivel}: mexeu em {mexeu}/{len(passos)} quadros, média {passos.mean():.1f} px")
+            if nivel != "baixa":
+                self.assertLess(mexeu, 6, nivel)
+                self.assertLess(np.hypot(*(sai.mean(0) - (900, 500))), 25, nivel)  # parado no lugar certo
+        print("\n  " + " | ".join(resumo))
+
+    def test_salto_do_olhar_ainda_chega_rapido(self):
+        for nivel in ("media", "alta"):
+            alvos = [(400, 300)] * 60 + [(1400, 800)] * 60      # olha para outro canto da tela
+            sai = self.simular(nivel, alvos)
+            chegada = next(i for i in range(60, 120) if np.hypot(*(sai[i] - (1400, 800))) < 80)
+            self.assertLess((chegada - 60) / 30, 0.7, nivel)    # menos de 0,7 s
+            final = sai[100:]
+            self.assertLess(np.hypot(*np.diff(final, axis=0).T).max(), 0.5, nivel)  # e para lá
+
+    def test_mediana_tira_pico_de_um_quadro(self):
+        from olhar.filtro import MedianaVetor
+        m = MedianaVetor(5)
+        for v in ([0, 0], [0, 0], [9, 9], [0, 0], [0, 0]):
+            r = m(v)
+        np.testing.assert_allclose(r, [0, 0])

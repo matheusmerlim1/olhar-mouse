@@ -64,6 +64,7 @@ class Controle:
         self.escolher = False       # mostrar a tela das 3 opções de câmera
         self.parado = False         # na bandeja, sem câmera ligada (saiu da escolha/calibração)
         self.reabrir = False        # atualizou pelo menu: sair e abrir a versão nova
+        self.refiltrar = False      # mudou a estabilidade do cursor (vale na hora)
         self.sair = False
 
 
@@ -213,6 +214,13 @@ class Bandeja:
             self.ctl.reiniciar = True
         return acao
 
+    def _estabilidade(self, nivel):
+        def acao(*_):
+            self.cfg["estabilidade"] = nivel
+            self._salvar_cfg(self.cfg)
+            self.ctl.refiltrar = True
+        return acao
+
     def _alternar(self, chave, reinicia=True):
         def acao(*_):
             self.cfg[chave] = not self.cfg.get(chave)
@@ -321,6 +329,14 @@ class Bandeja:
                   checked=lambda _: self.cfg.get("olho") == "esquerdo"),
                 M("Só o direito", self._mudar("olho", "direito"), radio=True,
                   checked=lambda _: self.cfg.get("olho") == "direito"),
+            )),
+            M("Estabilidade do cursor", pystray.Menu(
+                M("Baixa (mais rápido)", self._estabilidade("baixa"), radio=True,
+                  checked=lambda _: self.cfg.get("estabilidade") == "baixa"),
+                M("Média", self._estabilidade("media"), radio=True,
+                  checked=lambda _: self.cfg.get("estabilidade", "media") == "media"),
+                M("Alta (mais firme)", self._estabilidade("alta"), radio=True,
+                  checked=lambda _: self.cfg.get("estabilidade") == "alta"),
             )),
             M("Uso óculos", self._alternar("oculos"), checked=lambda _: bool(self.cfg.get("oculos"))),
             M("Bipes", self._alternar("som", reinicia=False), checked=lambda _: bool(self.cfg.get("som"))),

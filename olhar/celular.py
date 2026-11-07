@@ -46,16 +46,28 @@ Mantenha esta página aberta (a tela do celular não pode apagar).</p>
 <script>
 const st = document.getElementById('st'), v = document.getElementById('v');
 const destino = location.pathname.replace(/\\/$/, '') + '/quadro';
+// cada aba tem uma sessão; o PC só aceita a aba mais nova e manda as antigas pararem
+// (várias abas abertas ao mesmo tempo travavam o Chrome do celular)
+const sessao = Math.random().toString(36).slice(2) + Date.now().toString(36);
+const QPS = 20;                                  // quadros por segundo (poupa o celular)
 let rodando = false, enviados = 0, t0 = performance.now();
+const dormir = ms => new Promise(r => setTimeout(r, ms));
 function msg(t, c){ st.textContent = t; st.className = c || ''; }
 async function manterAcesa(){
-  try { if ('wakeLock' in navigator) await navigator.wakeLock.request('screen'); } catch(e) {}
+  try { if ('wakeLock' in navigator && !document.hidden) await navigator.wakeLock.request('screen'); } catch(e) {}
+}
+function parar(t){
+  rodando = false;
+  if (v.srcObject) v.srcObject.getTracks().forEach(tr => tr.stop());
+  v.srcObject = null;
+  msg(t, 'erro');
+  try { window.close(); } catch(e) {}
 }
 async function iniciar(){
   if (!window.isSecureContext){ msg('A página não está em HTTPS: a câmera fica bloqueada.', 'erro'); return; }
   try {
     const s = await navigator.mediaDevices.getUserMedia({audio:false,
-      video:{facingMode:'user', width:{ideal:640}, height:{ideal:480}, frameRate:{ideal:30}}});
+      video:{facingMode:'user', width:{ideal:640}, height:{ideal:480}, frameRate:{ideal:QPS, max:30}}});
     v.srcObject = s; await v.play();
   } catch(e){ msg('Não consegui abrir a câmera: ' + e.message, 'erro'); return; }
   document.getElementById('ir').hidden = true;
@@ -65,19 +77,24 @@ async function iniciar(){
 async function enviar(){
   const c = document.createElement('canvas'), ctx = c.getContext('2d');
   while (rodando){
-    if (!v.videoWidth){ await new Promise(r => setTimeout(r, 100)); continue; }
+    if (document.hidden){ await dormir(500); continue; }   // aba escondida não envia nada
+    if (!v.videoWidth){ await dormir(100); continue; }
+    const inicio = performance.now();
     const k = Math.min(1, 640 / Math.max(v.videoWidth, v.videoHeight));
     c.width = Math.round(v.videoWidth * k); c.height = Math.round(v.videoHeight * k);
     ctx.drawImage(v, 0, 0, c.width, c.height);
-    const b = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.75));
+    const b = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.7));
     try {
-      const r = await fetch(destino, {method:'POST', body:b, cache:'no-store'});
+      const r = await fetch(destino, {method:'POST', body:b, cache:'no-store', headers:{'X-Sessao': sessao}});
+      if (r.status === 409){ parar('Esta aba foi substituída por outra mais nova. Pode fechá-la.'); return; }
       if (!r.ok) throw new Error('HTTP ' + r.status);
       enviados++;
       const s = (performance.now() - t0) / 1000;
       if (s > 1){ msg('Enviando para o computador: ' + (enviados / s).toFixed(0) + ' quadros/s', 'ok'); enviados = 0; t0 = performance.now(); }
     } catch(e){ msg('Sem conexão com o computador (' + e.message + '). Tentando de novo…', 'erro');
-      await new Promise(r => setTimeout(r, 1000)); }
+      await dormir(1000); continue; }
+    const resto = 1000 / QPS - (performance.now() - inicio);
+    if (resto > 0) await dormir(resto);
   }
 }
 document.getElementById('ir').onclick = iniciar;
@@ -173,6 +190,8 @@ class CameraCelular:
         self._lido = 0       # último quadro entregue pelo read()
         self._cond = threading.Condition()
         self.ultimo_quadro_t = 0.0
+        self._sessao = ""            # aba do celular que está valendo
+        self._antigas: set[str] = set()
 
         cam = self
 
@@ -208,6 +227,21 @@ class CameraCelular:
                 dados = self.rfile.read(n)
                 if self._rota() != f"/{cam.codigo}/quadro":
                     self.send_error(404)
+                    return
+                # só a aba mais nova manda imagem: as antigas recebem 409 e desligam a
+                # câmera. Com várias abas, quadros velhos se misturavam com os atuais
+                # (cursor pulando) e o Chrome do celular travava.
+                sessao = self.headers.get("X-Sessao", "")
+                with cam._cond:
+                    recusar = not sessao or sessao in cam._antigas
+                    if not recusar and sessao != cam._sessao:
+                        if cam._sessao:
+                            cam._antigas.add(cam._sessao)
+                        cam._sessao = sessao
+                if recusar:
+                    self.send_response(409)
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
                     return
                 with cam._cond:
                     cam._jpeg = dados
