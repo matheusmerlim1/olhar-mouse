@@ -65,6 +65,11 @@ def commit_remoto(timeout: float = 6) -> str | None:
         return None
 
 
+def _igual(a: bytes, b: bytes) -> bool:
+    """Mesmo conteúdo, ignorando CRLF/LF (o ZIP montado no Windows e o do GitHub diferem nisso)."""
+    return a.replace(b"\r\n", b"\n") == b.replace(b"\r\n", b"\n")
+
+
 def aplicar_zip(dados: bytes, raiz: Path) -> list[str]:
     """Copia o conteúdo do ZIP do GitHub por cima da pasta, sem tocar nos protegidos."""
     trocados = []
@@ -80,7 +85,7 @@ def aplicar_zip(dados: bytes, raiz: Path) -> list[str]:
             destino = raiz / rel
             destino.parent.mkdir(parents=True, exist_ok=True)
             novo = z.read(nome)
-            if destino.exists() and destino.read_bytes() == novo:
+            if destino.exists() and _igual(destino.read_bytes(), novo):
                 continue
             tmp = destino.with_name(destino.name + ".novo")
             tmp.write_bytes(novo)
@@ -160,7 +165,7 @@ def _via_git(raiz: Path) -> tuple[bool, str]:
     req_antes = (raiz / "requirements.txt").read_bytes()
     if _git(raiz, "merge", "--ff-only", f"origin/{RAMO}").returncode != 0:
         return False, "há versão nova, mas o histórico local divergiu: atualize à mão"
-    if (raiz / "requirements.txt").read_bytes() != req_antes:
+    if not _igual((raiz / "requirements.txt").read_bytes(), req_antes):
         _instalar_dependencias(raiz)
     return True, f"atualizado pelo git ({atras} alteração(ões))"
 
@@ -177,7 +182,7 @@ def _via_zip(raiz: Path) -> tuple[bool, str]:
         dados = r.read()
     req_antes = (raiz / "requirements.txt").read_bytes() if (raiz / "requirements.txt").exists() else b""
     trocados = aplicar_zip(dados, raiz)
-    if "requirements.txt" in trocados and (raiz / "requirements.txt").read_bytes() != req_antes:
+    if "requirements.txt" in trocados and not _igual((raiz / "requirements.txt").read_bytes(), req_antes):
         _instalar_dependencias(raiz)
     return True, f"atualizado para {remoto[:7]} ({len(trocados)} arquivo(s))"
 

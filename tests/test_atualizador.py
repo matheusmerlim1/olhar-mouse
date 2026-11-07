@@ -35,6 +35,12 @@ class TestAplicarZip(unittest.TestCase):
         self.assertFalse((raiz / ".venv").exists())
         self.assertEqual(sorted(trocados), ["README.md", "olhar/app.py", "olhar/novo.py"])
 
+    def test_so_fim_de_linha_diferente_nao_conta(self):
+        raiz = Path(tempfile.mkdtemp())
+        (raiz / "requirements.txt").write_bytes(b"numpy\r\nqrcode\r\n")
+        zipado = zip_do_github({"requirements.txt": "numpy\nqrcode\n"})
+        self.assertEqual(atualizador.aplicar_zip(zipado, raiz), [])
+
     def test_arquivo_igual_nao_conta_como_trocado(self):
         raiz = Path(tempfile.mkdtemp())
         (raiz / "a.txt").write_bytes(b"igual")
