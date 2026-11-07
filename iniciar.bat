@@ -1,6 +1,7 @@
 @echo off
-rem Abre o Olhar-mouse sem janela (fica so o icone do olho perto do relogio).
-rem Na primeira vez instala o ambiente Python (alguns minutos).
+rem Olhar-mouse com a ultima camera usada.
+rem Abre sem janela: fica so o icone do olho perto do relogio. Na primeira vez instala o ambiente Python.
+rem (cada atalho e completo: nesta pasta com acento o "call outro.bat" do Windows falha)
 chcp 65001 >nul
 cd /d "%~dp0"
 if not exist ".venv\Scripts\pythonw.exe" (
