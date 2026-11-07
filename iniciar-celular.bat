@@ -1,5 +1,4 @@
 @echo off
+rem Olhar-mouse com a camera do celular: o PC mostra um QR code, o celular abre a pagina.
 cd /d "%~dp0"
-rem Camera do celular por QR code: o PC mostra um QR, o celular abre a pagina e envia a camera.
-.venv\Scripts\python -m olhar --camera celular %*
-pause
+call iniciar.bat --camera celular %*

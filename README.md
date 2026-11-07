@@ -17,25 +17,49 @@ cai onde você estava olhando antes de piscar.
 
 ## Como usar
 
-1. Dê dois cliques em `iniciar.bat`. Na primeira vez ele cria o ambiente Python e instala as
-   dependências (precisa do Python 3.12, `py -3.12`).
-2. **Calibração** (só na primeira vez, ou com F10): a tela fica preta.
+O programa roda **sem janela**, como o ditado por voz (projeto 24). Ao abrir, ele mostra só a
+calibração e depois fica apenas um **ícone de olho perto do relógio**.
+
+| Atalho | Câmera |
+|---|---|
+| `iniciar-webcam.bat` | webcam do computador |
+| `iniciar-celular.bat` | câmera do celular (QR code) |
+| `iniciar.bat` | a última câmera usada |
+
+Na primeira vez o atalho cria o ambiente Python e instala as dependências (precisa do Python
+3.12, `py -3.12`).
+
+1. **Celular**: abre uma janela com o QR code (veja [Câmera do celular](#câmera-do-celular-qr-code-sem-instalar-nada)).
+2. **Calibração** (só na primeira vez, ou quando a câmera, o olho ou os óculos mudam). A tela fica
+   preta e mostra a câmera até achar o seu rosto. Depois:
    - olhe para o ponto central com os olhos abertos;
    - feche os olhos quando pedir e só abra quando ouvir o bipe;
    - siga com o olhar os 13 pontos que aparecem.
-   Mantenha a cabeça mais ou menos onde vai ficar durante o uso.
-3. Pronto: o cursor passa a seguir o olhar.
+   Mantenha a cabeça mais ou menos onde vai ficar durante o uso. Se o rosto sumir no meio, ele
+   avisa com um bipe grave e recomeça.
+3. Pronto: a tela volta ao normal e o cursor segue o olhar, em qualquer programa.
+
+Cor do ícone: **verde** seguindo o olhar · **cinza riscado** pausado · **vermelho** rosto não
+encontrado · **azul** esperando o celular · **roxo** calibrando · **laranja** carregando.
+
+Menu do ícone (botão direito): pausar/retomar, recalibrar, mostrar a câmera, trocar entre webcam e
+celular, olho usado (os dois, só o esquerdo ou só o direito), uso óculos, bipes, iniciar com o
+Windows, liberar firewall para o celular, abrir o `config.json`, ver o registro, sair. As trocas
+ficam gravadas no `config.json`.
 
 | Tecla | Função |
 |---|---|
 | **F9** | pausa / retoma (funciona com qualquer janela em foco) |
 | **F10** | refaz a calibração |
-| **Esc** ou **Q** (na janela da câmera) | sai |
-| **P** / **C** (na janela da câmera) | pausa / calibra |
+| **Esc** (na calibração) | cancela |
 
-A janela da câmera mostra os olhos detectados e duas barras com o quanto cada olho está fechado
-(fica vermelha quando o programa considera o olho fechado). Por ela você vê se a detecção está
-boa antes de confiar nos cliques.
+**Mostrar a câmera** (no menu) abre uma janela com os olhos detectados e duas barras com o quanto
+cada olho está fechado. A barra fica vermelha quando o programa considera o olho fechado. Serve para
+conferir a detecção; feche quando quiser (Esc ou o X), que o programa continua rodando.
+
+Só abre uma cópia por vez, porque duas moveriam o mouse ao mesmo tempo. Erros aparecem como
+notificação do Windows e ficam em `dados/olhar.log`. Para ver tudo no terminal:
+`.venv\Scripts\python -m olhar --console`.
 
 ## Quem usa óculos
 
@@ -57,7 +81,7 @@ câmera.
 
 ## Câmera do celular (QR code, sem instalar nada)
 
-1. Dê dois cliques em `iniciar-celular.bat` (ou ponha `"camera": "celular"` no `config.json`).
+1. Dê dois cliques em `iniciar-celular.bat` (ou escolha *Câmera › Celular* no menu do ícone).
 2. A tela do PC mostra um **QR code**. Aponte a câmera do celular para ele e abra o link.
 3. Na primeira vez o navegador avisa **"conexão não particular"**. Toque em *Avançado* e
    *Continuar*. O aviso aparece porque o certificado HTTPS foi gerado pelo seu próprio PC, e o
@@ -106,7 +130,7 @@ O clique sai 1,5 s depois da última piscada (é o tempo de saber se vem mais um
 | `olho` | `"ambos"` | `"ambos"`, `"esquerdo"` ou `"direito"` |
 | `oculos` | `false` | filtragem extra contra reflexo na lente |
 | `realce_contraste` | `false` | contraste local (CLAHE), para pouca luz |
-| `mostrar_camera` | `true` | janela com a imagem da câmera |
+| `mostrar_camera` | `false` | abrir já com a janela da câmera |
 | `som` | `true` | bipe no clique e na pausa |
 | `gestos.lento_min` / `lento_max` | `0.30` / `1.50` | duração (s) de uma piscada "lenta" |
 | `gestos.janela` | `1.50` | tempo máximo (s) entre as duas piscadas |
@@ -144,6 +168,7 @@ câmera ─► MediaPipe Face Landmarker (478 pontos, com íris)
 | `olhar/celular.py` | câmera do celular pelo navegador: servidor HTTPS, certificado, QR code |
 | `olhar/mouse.py` | mover e clicar (API do Windows) |
 | `olhar/app.py` | laço principal |
+| `olhar/bandeja.py` | ícone na bandeja, menu, iniciar com o Windows |
 | `modelos/face_landmarker.task` | modelo do Google MediaPipe (Apache 2.0) |
 
 A calibração fica em `dados/calibracao.json` (não vai para o git; é de cada pessoa e de cada

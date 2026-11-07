@@ -1,4 +1,8 @@
-"""Laço principal: câmera → olhos → cursor e cliques."""
+"""Laço principal: câmera → olhos → cursor e cliques.
+
+Roda sem janela, com um ícone na bandeja (como o ditado por voz do projeto 24).
+Janelas só na abertura (QR code do celular, calibração) ou quando pedidas.
+"""
 from __future__ import annotations
 
 import argparse
@@ -26,13 +30,14 @@ PADRAO = {
     "olho": "ambos",
     "oculos": False,
     "realce_contraste": False,
-    "mostrar_camera": True,
+    "mostrar_camera": False,
     "som": True,
     "pontos_calibracao": 13,
     "gestos": {"lento_min": 0.30, "lento_max": 1.50, "janela": 1.50},
     "suavizacao": {"min_cutoff": 0.6, "beta": 0.004},
 }
-JANELA = "olhar-mouse (Esc sai, P pausa, C calibra)"
+JANELA = "olhar-mouse - camera (Esc fecha, P pausa, C calibra)"
+JANELA_QR = "Celular - olhar-mouse"
 
 
 def ler_config(caminho: Path) -> dict:
@@ -47,6 +52,15 @@ def ler_config(caminho: Path) -> dict:
     if cfg["olho"] not in ("ambos", "esquerdo", "direito"):
         raise SystemExit('config.json: "olho" deve ser "ambos", "esquerdo" ou "direito".')
     return cfg
+
+
+def salvar_config(cfg: dict, caminho: Path) -> None:
+    """Grava as escolhas do menu no config.json, preservando a ajuda e a ordem."""
+    dado = json.loads(caminho.read_text(encoding="utf-8")) if caminho.exists() else {}
+    for k in ("camera", "olho", "oculos", "som", "mostrar_camera", "realce_contraste"):
+        if k in cfg:
+            dado[k] = cfg[k]
+    caminho.write_text(json.dumps(dado, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
 def montar_gestos(cfg: dict) -> tuple[ConfigGestos, int]:
@@ -126,62 +140,104 @@ def sem_acento(s: str) -> str:
     return unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode()
 
 
-def executar(cfg: dict, arq_calib: Path, forcar_calibracao: bool = False) -> None:
+class _Console:
+    """Substitui a bandeja no modo --console (mensagens no terminal)."""
+    console = True
+
+    def definir_estado(self, estado):
+        pass
+
+    def notificar(self, titulo, msg):
+        print(f"[{titulo}] {msg}")
+
+    def fechar(self):
+        pass
+
+
+def _fechar_janela(nome: str) -> None:
+    try:
+        cv2.destroyWindow(nome)
+    except cv2.error:
+        pass
+
+
+def executar(cfg: dict, arq_calib: Path, ctl, ui, forcar_calibracao: bool = False) -> None:
+    """Abre a câmera, calibra se preciso e segue o olhar até Sair ou mudar a config."""
     tela = mouse.tamanho_tela()
+    console = getattr(ui, "console", False)
+
+    def parar():
+        return ctl.sair or ctl.reiniciar
+
     celular = str(cfg["camera"]).strip().lower() == "celular"
     if celular:
         cap = CameraCelular(RAIZ / "dados")
-        print(f"Câmera do celular: abra {cap.url} (ou leia o QR code na tela).")
+        print(f"Câmera do celular: {cap.url}")
+        ui.definir_estado("celular")
         try:
-            aguardar_celular(cap, tela, "Celular - olhar-mouse")
-        except Exception:
+            if not aguardar_celular(cap, tela, JANELA_QR, False, parar):
+                cap.release()
+                return
+        except BaseException:
             cap.release()
             raise
     else:
+        ui.definir_estado("carregando")
         cap = abrir_camera(cfg["camera"])
     detector = Detector(RAIZ / "modelos" / "face_landmarker.task", realce=cfg["realce_contraste"])
     olho = cfg["olho"]
 
     def fazer_calibracao():
-        print("Calibrando…")
+        ui.definir_estado("calibrando")
         modelo, palp = calibrar(cap, detector, tela, olho, cfg["pontos_calibracao"])
         salvar(arq_calib, modelo, palp, {"tela": list(tela), "olho": olho, "oculos": cfg["oculos"],
                                          "camera": str(cfg["camera"])})
-        print(f"Calibração salva em {arq_calib} (erro médio {modelo.erro_px:.0f} px).")
+        print(f"Calibração salva (erro médio {modelo.erro_px:.0f} px).")
         return modelo, palp
 
-    modelo = calib_palp = None
-    if arq_calib.exists() and not forcar_calibracao:
-        modelo, calib_palp, extra = carregar(arq_calib)
-        # a calibração vale para uma câmera numa posição: trocar a câmera
-        # (webcam ↔ celular) exige calibrar de novo
-        if (extra.get("tela") != list(tela) or extra.get("olho") != olho
-                or extra.get("oculos") != cfg["oculos"] or extra.get("camera") != str(cfg["camera"])):
-            print("A tela, a câmera, o olho ou o modo óculos mudou desde a última calibração: calibrando de novo.")
-            modelo = None
-    if modelo is None:
-        modelo, calib_palp = fazer_calibracao()
-
-    cfg_g, mediana = montar_gestos(cfg)
-
-    def novo_estado():
-        return (Palpebras(calib_palp, janela_mediana=mediana), Gestos(cfg_g),
-                OneEuro2D(**cfg["suavizacao"]), Congelador())
-
-    palp, gestos, filtro, cong = novo_estado()
-    pausado = False
-    sem_rosto_desde = None
-    teclas_antes = {mouse.VK_F9: False, mouse.VK_F10: False}
-    msg, msg_t, evento_visto = "", 0.0, ""
-    print("Rodando. F9 pausa/retoma, F10 recalibra, Esc (na janela da câmera) sai.")
-
     try:
-        while True:
+        modelo = calib_palp = None
+        if arq_calib.exists() and not forcar_calibracao:
+            modelo, calib_palp, extra = carregar(arq_calib)
+            # a calibração vale para uma câmera numa posição: trocar a câmera
+            # (webcam ↔ celular), a tela, o olho ou os óculos exige calibrar de novo
+            if (extra.get("tela") != list(tela) or extra.get("olho") != olho
+                    or extra.get("oculos") != cfg["oculos"] or extra.get("camera") != str(cfg["camera"])):
+                print("Tela, câmera, olho ou óculos mudou desde a última calibração: calibrando de novo.")
+                modelo = None
+        if modelo is None:
+            modelo, calib_palp = fazer_calibracao()
+
+        cfg_g, mediana = montar_gestos(cfg)
+
+        def novo_estado():
+            return (Palpebras(calib_palp, janela_mediana=mediana), Gestos(cfg_g),
+                    OneEuro2D(**cfg["suavizacao"]), Congelador())
+
+        palp, gestos, filtro, cong = novo_estado()
+        sem_rosto_desde = None
+        teclas_antes = {mouse.VK_F9: False, mouse.VK_F10: False}
+        msg, msg_t, evento_visto = "", 0.0, ""
+        pausa_antes = ctl.pausado
+        previa_aberta = False
+        ui.notificar("Olhar-mouse pronto",
+                     "O cursor segue o seu olhar. F9 pausa, F10 recalibra. Menu no ícone do olho, perto do relógio.")
+
+        while not parar():
             ok, frame = cap.read()
             if not ok:
                 if celular and not cap.conectado(3.0):
-                    # celular desconectou (tela apagou, Wi-Fi caiu…): mostra o QR de novo
-                    aguardar_celular(cap, tela, "Celular - olhar-mouse")
+                    # celular desconectou (tela apagou, Wi-Fi caiu…): QR numa janela comum
+                    ui.definir_estado("celular")
+                    ui.notificar("Celular desconectado", "Abra de novo a página no celular (o QR code está na tela).")
+                    if previa_aberta:
+                        _fechar_janela(JANELA)
+                        previa_aberta = False
+                    try:
+                        aguardar_celular(cap, tela, JANELA_QR, False, parar)
+                    except Cancelado:  # Esc só esconde o QR; continua esperando o celular
+                        while not parar() and not cap.conectado(1.0):
+                            time.sleep(0.2)
                     palp, gestos, filtro, cong = novo_estado()
                 time.sleep(0.01)
                 continue
@@ -189,18 +245,20 @@ def executar(cfg: dict, arq_calib: Path, forcar_calibracao: bool = False) -> Non
             m = detector.processar(frame)
 
             # --- teclas globais (funcionam com qualquer janela em foco)
-            recal = False
             for vk in teclas_antes:
                 agora = mouse.tecla_apertada(vk)
                 if agora and not teclas_antes[vk]:
                     if vk == mouse.VK_F9:
-                        pausado = not pausado
-                        if cfg["som"]:
-                            bipe(500 if pausado else 800, 90)
+                        ctl.pausado = not ctl.pausado
                     else:
-                        recal = True
+                        ctl.recalibrar = True
                 teclas_antes[vk] = agora
+            if ctl.pausado != pausa_antes:
+                pausa_antes = ctl.pausado
+                if cfg["som"]:
+                    bipe(500 if ctl.pausado else 800, 90)
 
+            congelado = None
             if m is None:
                 sem_rosto_desde = sem_rosto_desde or t
                 gestos.atualizar(t, False, False)
@@ -215,7 +273,7 @@ def executar(cfg: dict, arq_calib: Path, forcar_calibracao: bool = False) -> Non
                 clique = gestos.atualizar(t, fe, fd)
                 congelado = cong.atualizar(t, gestos.fechando)
 
-                if not pausado:
+                if not ctl.pausado:
                     if congelado is None:
                         alvo = modelo.prever(vetor_olhar(m, olho))
                         x, y = filtro(float(alvo[0]), float(alvo[1]), t)
@@ -233,23 +291,43 @@ def executar(cfg: dict, arq_calib: Path, forcar_calibracao: bool = False) -> Non
                     evento_visto = gestos.ultimo_evento
                     if not (clique and msg_t == t):
                         msg, msg_t = evento_visto, t
-                status = "PAUSADO (F9)" if pausado else ("parado (piscando)" if congelado else "seguindo o olhar")
+                status = "PAUSADO (F9)" if ctl.pausado else ("parado (piscando)" if congelado else "seguindo o olhar")
 
-            ultimo = msg if t - msg_t < 2.5 else ""
-            if cfg["mostrar_camera"]:
+            if ctl.pausado:
+                ui.definir_estado("pausado")
+            elif sem_rosto_desde and t - sem_rosto_desde > 1.0:
+                ui.definir_estado("sem_rosto")
+            elif m is not None:
+                ui.definir_estado("seguindo")
+
+            # --- janela da câmera: só quando pedida pelo menu
+            if ctl.mostrar_camera:
+                ultimo = msg if t - msg_t < 2.5 else ""
                 cv2.imshow(JANELA, desenhar_previa(frame, m, palp, status, olho, sem_acento(ultimo)))
+                previa_aberta = True
                 k = cv2.waitKey(1) & 0xFF
-                if k in (27, ord("q")):
-                    break
-                if k == ord("p"):
-                    pausado = not pausado
-                if k == ord("c"):
-                    recal = True
-            if recal:
+                fechou = cv2.getWindowProperty(JANELA, cv2.WND_PROP_VISIBLE) < 1
+                if k in (27, ord("q")) or fechou:
+                    if console and k in (27, ord("q")):
+                        ctl.sair = True
+                    ctl.mostrar_camera = False
+                elif k == ord("p"):
+                    ctl.pausado = not ctl.pausado
+                elif k == ord("c"):
+                    ctl.recalibrar = True
+            if previa_aberta and not ctl.mostrar_camera:
+                _fechar_janela(JANELA)
+                previa_aberta = False
+
+            if ctl.recalibrar:
+                ctl.recalibrar = False
+                if previa_aberta:
+                    _fechar_janela(JANELA)
+                    previa_aberta = False
                 try:
                     modelo, calib_palp = fazer_calibracao()
                 except Cancelado:
-                    print("Calibração cancelada; mantendo a anterior.")
+                    ui.notificar("Calibração cancelada", "Mantive a calibração anterior.")
                 palp, gestos, filtro, cong = novo_estado()
                 msg, evento_visto = "", ""
     finally:
@@ -258,23 +336,68 @@ def executar(cfg: dict, arq_calib: Path, forcar_calibracao: bool = False) -> Non
         cv2.destroyAllWindows()
 
 
+def _uma_instancia() -> bool:
+    """Impede duas cópias abertas (as duas moveriam o mouse ao mesmo tempo)."""
+    if sys.platform != "win32":
+        return True
+    import ctypes
+    k32 = ctypes.windll.kernel32
+    _uma_instancia.mutex = k32.CreateMutexW(None, False, "Local\\OlharMouse")
+    if k32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+        ctypes.windll.user32.MessageBoxW(
+            None, "O Olhar-mouse já está aberto: procure o ícone do olho perto do relógio.", "Olhar-mouse", 0x40)
+        return False
+    return True
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Controla o mouse com o olhar e cliques por piscada.")
     ap.add_argument("--config", default=str(RAIZ / "config.json"))
     ap.add_argument("--calibrar", action="store_true", help="refaz a calibração antes de começar")
-    ap.add_argument("--camera", help="sobrepõe a câmera do config (número ou URL do celular)")
+    ap.add_argument("--camera", help='troca a câmera e grava no config: número, "celular" ou URL')
+    ap.add_argument("--console", action="store_true", help="sem ícone na bandeja, mensagens no terminal")
+    ap.add_argument("--pasta", help=argparse.SUPPRESS)  # só identifica o atalho de iniciar com o Windows
     args = ap.parse_args(argv)
 
-    cfg = ler_config(Path(args.config))
+    (RAIZ / "dados").mkdir(exist_ok=True)
+    if not args.console or sys.stdout is None:
+        # sem terminal (pythonw): tudo vai para o registro
+        log = open(RAIZ / "dados" / "olhar.log", "a", encoding="utf-8", buffering=1)
+        sys.stdout = sys.stderr = log
+        print(f"\n=== {time.strftime('%Y-%m-%d %H:%M:%S')} olhar-mouse iniciado")
+    if not _uma_instancia():
+        return
+
+    arq_cfg = Path(args.config)
+    cfg = ler_config(arq_cfg)
     if args.camera is not None:
-        cfg["camera"] = args.camera
+        cfg["camera"] = int(args.camera) if args.camera.strip().isdigit() else args.camera
+        salvar_config(cfg, arq_cfg)
+
+    from .bandeja import Bandeja, Controle
+    ctl = Controle()
+    ctl.mostrar_camera = bool(cfg["mostrar_camera"]) or args.console
+    ui = _Console() if args.console else Bandeja(RAIZ, cfg, ctl, lambda c: salvar_config(c, arq_cfg))
+    forcar = args.calibrar
     try:
-        executar(cfg, RAIZ / "dados" / "calibracao.json", args.calibrar)
-    except Cancelado:
-        print("Calibração cancelada.")
-    except RuntimeError as e:
-        print(f"Erro: {e}", file=sys.stderr)
-        sys.exit(1)
+        while not ctl.sair:
+            ctl.reiniciar = False
+            try:
+                executar(cfg, RAIZ / "dados" / "calibracao.json", ctl, ui, forcar)
+            except Cancelado:
+                print("Cancelado pelo usuário; encerrando.")
+                ctl.sair = True
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                ui.notificar("Olhar-mouse: erro", str(e) or e.__class__.__name__)
+                time.sleep(4)  # dá tempo de a notificação aparecer
+                ctl.sair = True
+            forcar = False
+            if not ctl.reiniciar:
+                break
+    finally:
+        ui.fechar()
 
 
 if __name__ == "__main__":

@@ -1,9 +1,17 @@
 @echo off
+rem Abre o Olhar-mouse sem janela (fica so o icone do olho perto do relogio).
+rem Na primeira vez instala o ambiente Python (alguns minutos).
+chcp 65001 >nul
 cd /d "%~dp0"
-if not exist .venv\Scripts\python.exe (
-  echo Criando o ambiente Python pela primeira vez...
-  py -3.12 -m venv .venv
-  .venv\Scripts\python -m pip install -r requirements.txt
+if not exist ".venv\Scripts\pythonw.exe" (
+  echo Primeira execucao: instalando o ambiente Python...
+  py -3.12 -m venv .venv || goto erro
+  ".venv\Scripts\python.exe" -m pip install --disable-pip-version-check -r requirements.txt || goto erro
 )
-.venv\Scripts\python -m olhar %*
+start "" ".venv\Scripts\pythonw.exe" -m olhar %*
+exit /b 0
+:erro
+echo.
+echo Algo deu errado na instalacao. Veja a mensagem acima.
 pause
+exit /b 1

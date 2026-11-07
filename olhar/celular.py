@@ -264,43 +264,60 @@ def imagem_qr(texto: str, lado: int) -> np.ndarray:
     return cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
 
 
-def aguardar_celular(cam: CameraCelular, tela_wh: tuple[int, int], janela: str) -> None:
-    """Tela cheia com o QR code até o celular começar a mandar imagem."""
+def aguardar_celular(cam: CameraCelular, tela_wh: tuple[int, int], janela: str,
+                     tela_cheia: bool = True, deve_parar=lambda: False) -> bool:
+    """Mostra o QR code até o celular começar a mandar imagem.
+
+    Devolve True quando conectou, False se `deve_parar()` ficou verdadeiro
+    (Sair/trocar câmera pelo menu). Esc levanta `Cancelado`.
+    """
     from .calibracao import Cancelado
 
-    w, h = tela_wh
-    lado = int(min(w, h) * 0.55)
+    w, h = tela_wh if tela_cheia else (900, 900)
+    lado = int(min(w, h) * (0.55 if tela_cheia else 0.6))
     qr = imagem_qr(cam.url, lado)
     cv2.namedWindow(janela, cv2.WINDOW_NORMAL)
-    cv2.setWindowProperty(janela, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+    if tela_cheia:
+        cv2.setWindowProperty(janela, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+    else:
+        cv2.resizeWindow(janela, w, h)
+        cv2.setWindowProperty(janela, cv2.WND_PROP_TOPMOST, 1)
     fonte = cv2.FONT_HERSHEY_SIMPLEX
+    esc = 1.0 if tela_cheia else 0.75
 
-    def linha(img, txt, y, esc=0.8, cor=(235, 235, 235)):
-        (tw, _), _ = cv2.getTextSize(txt, fonte, esc, 2)
-        cv2.putText(img, txt, ((w - tw) // 2, y), fonte, esc, cor, 2, cv2.LINE_AA)
+    def linha(img, txt, y, k=0.8, cor=(235, 235, 235)):
+        (tw, _), _ = cv2.getTextSize(txt, fonte, k * esc, 2)
+        cv2.putText(img, txt, ((w - tw) // 2, y), fonte, k * esc, cor, 2 if k >= 0.7 else 1, cv2.LINE_AA)
 
     inicio = None
-    while True:
-        img = np.full((h, w, 3), 24, np.uint8)
-        y0, x0 = int(h * 0.14), (w - qr.shape[1]) // 2
-        img[y0:y0 + qr.shape[0], x0:x0 + qr.shape[1]] = qr
-        linha(img, "Aponte a camera do celular para o QR code", y0 - 50, 1.0)
-        yb = y0 + qr.shape[0] + 45
-        linha(img, cam.url, yb, 0.75, (120, 200, 255))
-        linha(img, "Se aparecer 'conexao nao particular': Avancado > Continuar (certificado deste PC)",
-              yb + 40, 0.6, (190, 190, 190))
-        linha(img, "PC e celular na mesma rede Wi-Fi. Se o Windows perguntar, permita o acesso a rede.",
-              yb + 72, 0.6, (190, 190, 190))
-        if cam.recebidos:
-            inicio = inicio or time.monotonic()
-            linha(img, "Celular conectado! Comecando...", yb + 120, 0.9, (120, 230, 120))
-        else:
-            linha(img, "Aguardando o celular...", yb + 120, 0.9, (80, 200, 255))
-        linha(img, "Esc cancela", h - 30, 0.6, (150, 150, 150))
-        cv2.imshow(janela, img)
-        if (cv2.waitKey(50) & 0xFF) in (27, ord("q")):
+    n_antes = cam.recebidos
+    try:
+        while True:
+            if deve_parar():
+                return False
+            img = np.full((h, w, 3), 24, np.uint8)
+            y0, x0 = int(h * 0.12), (w - qr.shape[1]) // 2
+            img[y0:y0 + qr.shape[0], x0:x0 + qr.shape[1]] = qr
+            linha(img, "Aponte a camera do celular para o QR code", y0 - int(30 * esc), 1.0)
+            yb = y0 + qr.shape[0] + int(40 * esc)
+            passo = int(30 * esc)
+            linha(img, cam.url, yb, 0.75, (120, 200, 255))
+            linha(img, "'Conexao nao particular' no celular: Avancado > Continuar", yb + passo, 0.55, (190, 190, 190))
+            linha(img, "Celular no mesmo Wi-Fi do PC. Pagina nao abre? Menu do icone > Liberar firewall",
+                  yb + 2 * passo, 0.55, (190, 190, 190))
+            if cam.recebidos > n_antes:
+                inicio = inicio or time.monotonic()
+                linha(img, "Celular conectado!", yb + 4 * passo, 0.9, (120, 230, 120))
+            else:
+                linha(img, "Aguardando o celular...", yb + 4 * passo, 0.9, (80, 200, 255))
+            linha(img, "Esc fecha esta janela" if not tela_cheia else "Esc cancela", h - 25, 0.55, (150, 150, 150))
+            cv2.imshow(janela, img)
+            if (cv2.waitKey(50) & 0xFF) in (27, ord("q")):
+                raise Cancelado
+            if inicio and time.monotonic() - inicio > 1.0:
+                return True
+    finally:
+        try:
             cv2.destroyWindow(janela)
-            raise Cancelado
-        if inicio and time.monotonic() - inicio > 1.0:
-            cv2.destroyWindow(janela)
-            return
+        except cv2.error:
+            pass

@@ -4,7 +4,7 @@
   "olho": "ambos",
   "oculos": false,
   "realce_contraste": false,
-  "mostrar_camera": true,
+  "mostrar_camera": false,
   "som": true,
   "pontos_calibracao": 13,
   "gestos": {
