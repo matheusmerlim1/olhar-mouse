@@ -46,7 +46,7 @@ if errorlevel 1 goto erro
 
 echo.
 echo  Pronto! Abra pelo icone "Olhar-mouse" na Area de Trabalho ou no menu Iniciar.
-echo  Com o programa aberto, o icone do olho fica perto do relogio (setinha ^).
+echo  Com o programa aberto, o icone do olho fica perto do relogio (setinha ^^).
 echo.
 choice /c SN /m " Abrir o Olhar-mouse agora"
 if errorlevel 2 exit /b 0
