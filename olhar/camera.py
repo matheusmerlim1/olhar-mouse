@@ -1,6 +1,7 @@
 """Câmera (do PC ou do celular) + detector de rosto do MediaPipe."""
 from __future__ import annotations
 
+import sys
 import time
 from pathlib import Path
 
@@ -13,15 +14,36 @@ from mediapipe.tasks.python import vision
 from .olhos import Medida, medir
 
 
+def listar_cameras() -> list[str]:
+    """Nomes das câmeras do Windows, na mesma ordem dos números do OpenCV (DirectShow).
+
+    Inclui celular ligado como webcam USB (modo "Webcam" do Android 14+),
+    DroidCam, OBS Virtual Camera etc.
+    """
+    if sys.platform != "win32":
+        return []
+    try:
+        from pygrabber.dshow_graph import FilterGraph
+        return list(FilterGraph().get_input_devices())
+    except Exception:
+        return []
+
+
 def abrir_camera(fonte, largura: int = 640, altura: int = 480) -> cv2.VideoCapture:
-    """fonte: número da webcam (0, 1…) ou URL do celular.
+    """fonte: número da webcam (0, 1…), nome da câmera ou URL de câmera IP.
 
     Celular: apps como "IP Webcam" (Android) dão um endereço tipo
-    http://192.168.0.10:8080/video; o DroidCam cria uma webcam virtual (use o
-    número dela, geralmente 1).
+    http://192.168.0.10:8080/video; o modo "Webcam" do Android 14+ (pelo cabo
+    USB) e o DroidCam aparecem como câmeras com nome.
     """
     if isinstance(fonte, str) and fonte.strip().isdigit():
         fonte = int(fonte)
+    elif isinstance(fonte, str) and "://" not in fonte:
+        nomes = listar_cameras()
+        if fonte not in nomes:
+            raise RuntimeError(f'A câmera "{fonte}" não está conectada. Câmeras encontradas: '
+                               + (", ".join(nomes) or "nenhuma"))
+        fonte = nomes.index(fonte)
     if isinstance(fonte, int):
         cap = cv2.VideoCapture(fonte, cv2.CAP_DSHOW) if hasattr(cv2, "CAP_DSHOW") else cv2.VideoCapture(fonte)
         if not cap.isOpened():

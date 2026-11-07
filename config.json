@@ -1,6 +1,6 @@
 {
   "_ajuda": "camera: 0 = webcam do PC; \"celular\" = camera do celular por QR code; 1 = segunda webcam ou DroidCam; ou URL de camera IP. olho: \"ambos\", \"esquerdo\" ou \"direito\". oculos: true filtra mais os picos causados por reflexo na lente (calibre usando os oculos). realce_contraste: true ajuda em ambiente escuro.",
-  "camera": 0,
+  "camera": "celular",
   "olho": "ambos",
   "oculos": false,
   "realce_contraste": false,
@@ -8,9 +8,9 @@
   "som": true,
   "pontos_calibracao": 13,
   "gestos": {
-    "lento_min": 0.30,
-    "lento_max": 1.50,
-    "janela": 1.50
+    "lento_min": 0.3,
+    "lento_max": 1.5,
+    "janela": 1.5
   },
   "suavizacao": {
     "min_cutoff": 0.6,

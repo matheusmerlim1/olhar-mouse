@@ -99,9 +99,11 @@ class Bandeja:
         import pystray
         self.raiz, self.cfg, self.ctl, self._salvar_cfg = raiz, cfg, controle, salvar_cfg
         self.estado = "carregando"
+        self._cameras: list[str] = []
         self._icone = pystray.Icon("olhar-mouse", desenhar_icone(self.estado),
                                    "Olhar-mouse — carregando…", menu=self._menu())
         self._icone.run_detached()
+        threading.Thread(target=self._vigiar_cameras, daemon=True).start()
 
     # ----- estado e avisos (chamados pelo laço principal)
     def definir_estado(self, estado: str) -> None:
@@ -161,10 +163,49 @@ class Bandeja:
     def _sair(self, *_):
         self.ctl.sair = True
 
+    def _itens_camera(self):
+        """Submenu gerado na hora: câmeras do Windows pelo nome + modos do celular."""
+        import pystray
+        M = pystray.MenuItem
+        atual = self.cfg.get("camera")
+        itens = []
+        for i, nome in enumerate(self._cameras):
+            marcado = atual == nome or (isinstance(atual, int) and atual == i)
+            itens.append(M(nome, self._mudar("camera", nome), radio=True,
+                           checked=lambda _, m=marcado: m))
+        if not self._cameras:
+            itens.append(M("(nenhuma câmera no Windows)", None, enabled=False))
+        itens += [
+            pystray.Menu.SEPARATOR,
+            M("Celular pelo cabo USB (Android)", self._mudar("camera", "usb"), radio=True,
+              checked=lambda _: str(self.cfg.get("camera")).lower() == "usb"),
+            M("Celular pelo Wi-Fi (QR code)", self._mudar("camera", "celular"), radio=True,
+              checked=lambda _: str(self.cfg.get("camera")).lower() == "celular"),
+        ]
+        return itens
+
+    def _vigiar_cameras(self):
+        """Atualiza a lista de câmeras (ligar o cabo do celular em modo webcam cria uma nova)."""
+        import time
+        try:
+            import comtypes
+            comtypes.CoInitialize()
+        except Exception:
+            pass
+        from .camera import listar_cameras
+        while True:
+            nomes = listar_cameras()
+            if nomes != self._cameras:
+                self._cameras = nomes
+                try:
+                    self._icone.update_menu()
+                except Exception:
+                    pass
+            time.sleep(5)
+
     def _menu(self):
         import pystray
         M, Sep = pystray.MenuItem, pystray.Menu.SEPARATOR
-        cam = lambda: str(self.cfg.get("camera")).lower()
         return pystray.Menu(
             M(lambda _: self._icone.title if getattr(self, "_icone", None) else "Olhar-mouse", None, enabled=False),
             Sep,
@@ -172,12 +213,7 @@ class Bandeja:
             M("Recalibrar (F10)", self._recalibrar),
             M("Mostrar a câmera", self._camera_janela, checked=lambda _: self.ctl.mostrar_camera),
             Sep,
-            M("Câmera", pystray.Menu(
-                M("Webcam do computador", self._mudar("camera", 0), radio=True,
-                  checked=lambda _: cam() not in ("celular",) and not cam().startswith("http")),
-                M("Celular (QR code)", self._mudar("camera", "celular"), radio=True,
-                  checked=lambda _: cam() == "celular"),
-            )),
+            M("Câmera", pystray.Menu(self._itens_camera)),
             M("Olho usado", pystray.Menu(
                 M("Os dois", self._mudar("olho", "ambos"), radio=True,
                   checked=lambda _: self.cfg.get("olho") == "ambos"),

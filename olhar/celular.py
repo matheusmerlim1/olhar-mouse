@@ -154,10 +154,20 @@ def _token(pasta: Path) -> str:
 class CameraCelular:
     """Imita o cv2.VideoCapture: `read()` devolve o quadro mais novo do celular."""
 
-    def __init__(self, pasta_dados: Path, porta: int = 8443, ip: str | None = None):
-        self.ip = ip or ip_local()
+    def __init__(self, pasta_dados: Path, porta: int = 8443, ip: str | None = None, usb: bool = False):
+        """usb=True: HTTP só no 127.0.0.1, para o túnel do `adb reverse`.
+
+        Pelo cabo o celular abre http://127.0.0.1, que o navegador já trata
+        como página segura (libera a câmera sem certificado), e o servidor
+        não fica visível na rede.
+        """
+        self.usb = usb
+        # 127.0.0.1 e não "localhost": localhost tenta o IPv6 (::1) antes e cada
+        # envio esperava ~2 s; 127.0.0.1 também conta como página segura
+        self.ip = "127.0.0.1" if usb else (ip or ip_local())
         self.codigo = _token(pasta_dados)
-        crt, chave = garantir_certificado(pasta_dados, self.ip)
+        if not usb:
+            crt, chave = garantir_certificado(pasta_dados, self.ip)
         self._jpeg = None
         self._n = 0          # quadros recebidos
         self._lido = 0       # último quadro entregue pelo read()
@@ -186,14 +196,19 @@ class CameraCelular:
                 self.wfile.write(corpo)
 
             def do_POST(self):
-                if self._rota() != f"/{cam.codigo}/quadro":
-                    self.send_error(404)
-                    return
-                n = int(self.headers.get("Content-Length", 0))
+                try:
+                    n = int(self.headers.get("Content-Length", 0))
+                except ValueError:
+                    n = -1
                 if not 0 < n < 5_000_000:
                     self.send_error(400)
                     return
+                # lê o corpo antes de responder, mesmo para recusar: responder
+                # com dados ainda chegando derruba a conexão (WinError 10054)
                 dados = self.rfile.read(n)
+                if self._rota() != f"/{cam.codigo}/quadro":
+                    self.send_error(404)
+                    return
                 with cam._cond:
                     cam._jpeg = dados
                     cam._n += 1
@@ -202,25 +217,27 @@ class CameraCelular:
                 self.send_response(204)
                 self.end_headers()
 
-        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        ctx.load_cert_chain(str(crt), str(chave))
         ultimo_erro = None
+        endereco = "127.0.0.1" if usb else "0.0.0.0"
         for p in range(porta, porta + 10):
             try:
-                self._srv = _Servidor(("0.0.0.0", p), _H)
+                self._srv = _Servidor((endereco, p), _H)
                 self.porta = p
                 break
             except OSError as e:
                 ultimo_erro = e
         else:
             raise RuntimeError(f"Nenhuma porta livre entre {porta} e {porta + 9}: {ultimo_erro}")
-        self._srv.socket = ctx.wrap_socket(self._srv.socket, server_side=True)
+        if not usb:
+            ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            ctx.load_cert_chain(str(crt), str(chave))
+            self._srv.socket = ctx.wrap_socket(self._srv.socket, server_side=True)
         self._thread = threading.Thread(target=self._srv.serve_forever, daemon=True)
         self._thread.start()
 
     @property
     def url(self) -> str:
-        return f"https://{self.ip}:{self.porta}/{self.codigo}"
+        return f"{'http' if self.usb else 'https'}://{self.ip}:{self.porta}/{self.codigo}"
 
     @property
     def recebidos(self) -> int:

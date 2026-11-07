@@ -169,13 +169,30 @@ def executar(cfg: dict, arq_calib: Path, ctl, ui, forcar_calibracao: bool = Fals
     def parar():
         return ctl.sair or ctl.reiniciar
 
-    celular = str(cfg["camera"]).strip().lower() == "celular"
+    modo = str(cfg["camera"]).strip().lower()
+    celular = modo in ("celular", "usb")
+    adb = None
+    if modo == "usb":
+        from .usb import AdbUsb, achar_adb, baixar_adb
+        caminho = achar_adb(RAIZ)
+        if caminho is None:
+            ui.notificar("Baixando o ADB", "Ferramenta oficial do Android para usar o celular pelo cabo (~7 MB).")
+            caminho = baixar_adb(RAIZ)
+        adb = AdbUsb(caminho)
+        print(f"ADB: {caminho}")
+
+    def esperar_celular() -> bool:
+        if adb is not None:
+            from .usb import aguardar_usb
+            return aguardar_usb(cap, adb, JANELA_QR, parar)
+        return aguardar_celular(cap, tela, JANELA_QR, False, parar)
+
     if celular:
-        cap = CameraCelular(RAIZ / "dados")
+        cap = CameraCelular(RAIZ / "dados", porta=8470 if adb else 8443, usb=adb is not None)
         print(f"Câmera do celular: {cap.url}")
         ui.definir_estado("celular")
         try:
-            if not aguardar_celular(cap, tela, JANELA_QR, False, parar):
+            if not esperar_celular():
                 cap.release()
                 return
         except BaseException:
@@ -229,12 +246,13 @@ def executar(cfg: dict, arq_calib: Path, ctl, ui, forcar_calibracao: bool = Fals
                 if celular and not cap.conectado(3.0):
                     # celular desconectou (tela apagou, Wi-Fi caiu…): QR numa janela comum
                     ui.definir_estado("celular")
-                    ui.notificar("Celular desconectado", "Abra de novo a página no celular (o QR code está na tela).")
+                    ui.notificar("Celular desconectado",
+                                 "Ligue o cabo de novo." if adb else "Abra de novo a página no celular (o QR code está na tela).")
                     if previa_aberta:
                         _fechar_janela(JANELA)
                         previa_aberta = False
                     try:
-                        aguardar_celular(cap, tela, JANELA_QR, False, parar)
+                        esperar_celular()
                     except Cancelado:  # Esc só esconde o QR; continua esperando o celular
                         while not parar() and not cap.conectado(1.0):
                             time.sleep(0.2)
@@ -333,6 +351,8 @@ def executar(cfg: dict, arq_calib: Path, ctl, ui, forcar_calibracao: bool = Fals
     finally:
         cap.release()
         detector.fechar()
+        if adb is not None:
+            adb.desfazer(cap.porta)
         cv2.destroyAllWindows()
 
 

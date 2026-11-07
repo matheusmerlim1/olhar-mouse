@@ -22,14 +22,15 @@ calibração e depois fica apenas um **ícone de olho perto do relógio**.
 
 | Atalho | Câmera |
 |---|---|
-| `iniciar-webcam.bat` | webcam do computador |
-| `iniciar-celular.bat` | câmera do celular (QR code) |
+| `iniciar-webcam.bat` | primeira câmera do Windows (`camera: 0`) |
+| `iniciar-usb.bat` | celular Android **pelo cabo USB** (sem Wi-Fi, sem internet) |
+| `iniciar-celular.bat` | celular pelo Wi-Fi (QR code) |
 | `iniciar.bat` | a última câmera usada |
 
 Na primeira vez o atalho cria o ambiente Python e instala as dependências (precisa do Python
 3.12, `py -3.12`).
 
-1. **Celular**: abre uma janela com o QR code (veja [Câmera do celular](#câmera-do-celular-qr-code-sem-instalar-nada)).
+1. **Celular**: abre uma janela com o QR code (Wi-Fi) ou com as instruções do cabo (USB) (veja [Celular pelo Wi-Fi](#celular-pelo-wi-fi-qr-code-sem-instalar-nada) e [pelo cabo USB](#celular-pelo-cabo-usb-android-sem-wi-fi)).
 2. **Calibração** (só na primeira vez, ou quando a câmera, o olho ou os óculos mudam). A tela fica
    preta e mostra a câmera até achar o seu rosto. Depois:
    - olhe para o ponto central com os olhos abertos;
@@ -79,7 +80,34 @@ Dicas: luz vindo de frente ou de lado (não refletindo direto na lente), câmera
 olhos, e incline levemente a armação se aparecer reflexo branco em cima da íris na janela da
 câmera.
 
-## Câmera do celular (QR code, sem instalar nada)
+## Celular pelo cabo USB (Android, sem Wi-Fi)
+
+Dois jeitos, ambos sem internet e sem rede:
+
+**A. Android 14 ou mais novo: o celular vira uma webcam.** Ligue o cabo, puxe a barra de
+notificações, toque em *"Carregando este dispositivo via USB"* e escolha **Webcam**. Em
+alguns aparelhos isso não existe; aí use o jeito B. O celular aparece como câmera no Windows:
+no menu do ícone, *Câmera* › escolha o nome dele. A lista se atualiza sozinha em poucos
+segundos.
+
+**B. Qualquer Android: `iniciar-usb.bat`** (ou *Câmera › Celular pelo cabo USB*). A mesma
+página do QR code passa pelo cabo, pelo túnel do ADB (ferramenta oficial do Android):
+
+1. No celular, ligue a **Depuração USB**, uma vez só: *Configurações › Sobre o telefone* ›
+   toque 7 vezes em *Número da versão*; depois *Configurações › Sistema › Opções do
+   desenvolvedor* › **Depuração USB**.
+2. Ligue o cabo e aceite **"Permitir depuração USB?"** no celular (marque "sempre").
+3. A página abre sozinha no navegador do celular. Toque em *Usar câmera* e permita.
+
+Pelo cabo, a página abre como `http://127.0.0.1`, que o navegador já considera seguro. Por isso
+não aparece o aviso de certificado, o firewall não entra na história e o servidor nem fica
+visível na rede. O ADB é procurado no SDK do Android (Flutter/Android Studio). Se não existir,
+o programa baixa o oficial do Google (~7 MB) para `ferramentas/platform-tools/`.
+
+iPhone: não tem modo webcam nem ADB no Windows. Use o Wi-Fi (QR code) ou um app de webcam
+pelo cabo (DroidCam, Camo), que aparece como câmera no menu.
+
+## Celular pelo Wi-Fi (QR code, sem instalar nada)
 
 1. Dê dois cliques em `iniciar-celular.bat` (ou escolha *Câmera › Celular* no menu do ícone).
 2. A tela do PC mostra um **QR code**. Aponte a câmera do celular para ele e abra o link.
@@ -126,7 +154,7 @@ O clique sai 1,5 s depois da última piscada (é o tempo de saber se vem mais um
 
 | Campo | Padrão | O que faz |
 |---|---|---|
-| `camera` | `0` | número da webcam, `"celular"` (QR code) ou URL de câmera IP |
+| `camera` | `0` | número ou nome da câmera, `"usb"` (celular no cabo), `"celular"` (QR code) ou URL de câmera IP |
 | `olho` | `"ambos"` | `"ambos"`, `"esquerdo"` ou `"direito"` |
 | `oculos` | `false` | filtragem extra contra reflexo na lente |
 | `realce_contraste` | `false` | contraste local (CLAHE), para pouca luz |
@@ -166,6 +194,7 @@ câmera ─► MediaPipe Face Landmarker (478 pontos, com íris)
 | `olhar/filtro.py` | filtro One Euro |
 | `olhar/camera.py` | webcam/câmera IP e detector MediaPipe |
 | `olhar/celular.py` | câmera do celular pelo navegador: servidor HTTPS, certificado, QR code |
+| `olhar/usb.py` | celular pelo cabo: ADB, túnel `adb reverse`, abre a página no celular |
 | `olhar/mouse.py` | mover e clicar (API do Windows) |
 | `olhar/app.py` | laço principal |
 | `olhar/bandeja.py` | ícone na bandeja, menu, iniciar com o Windows |
@@ -180,7 +209,7 @@ máquina).
 .venv\Scripts\python -m unittest discover -s tests -t .
 ```
 
-São 31 testes, todos sem câmera: os gestos (sequências de piscadas sintéticas, incluindo
+São 40 testes, todos sem câmera nem celular: os gestos (sequências de piscadas sintéticas, incluindo
 piscadas normais, ruído de um quadro, olhos que não fecham juntos, olho fechado demais), as
 pálpebras (calibração por usuário, histerese, pico de reflexo), a geometria, a regressão, o
 filtro e o congelamento do cursor.
