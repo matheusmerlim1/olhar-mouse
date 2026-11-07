@@ -67,8 +67,10 @@ câmera.
 
 Precisa de:
 - PC e celular na **mesma rede** (o celular no Wi-Fi do mesmo roteador do PC);
-- na primeira vez, clicar em **Permitir** quando o Windows perguntar se o Python pode acessar a
-  rede (rede privada);
+- **liberar o firewall do Windows** uma vez: botão direito em `ferramentas/liberar-firewall.ps1`
+  e depois *Executar com o PowerShell* (o Windows pede confirmação de administrador). O script libera
+  só as portas 8443–8452, só em rede privada. Sem isso a página fica "carregando" para sempre no
+  celular, porque o firewall descarta a conexão em silêncio;
 - celular **parado**, em pé, perto do monitor e de frente para o rosto. Se ele mudar de lugar,
   aperte F10 para calibrar de novo. Ao trocar de câmera o programa recalibra sozinho;
 - a página aberta e a tela do celular acesa (a página pede para a tela não apagar). Se a conexão
