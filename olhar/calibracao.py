@@ -18,7 +18,7 @@ import numpy as np
 
 from .gestos import CalibPalpebra
 from .modelo_olhar import ModeloOlhar
-from .olhos import vetor_olhar
+from .olhos import OLHO, vetor_olhar
 
 JANELA = "Calibracao - olhar-mouse"
 
@@ -94,46 +94,105 @@ def _coletar(cap, detector, tela: _Tela, dur: float, texto: str, sub: str = "",
     return medidas
 
 
+class _Falhou(Exception):
+    """Etapa sem rosto suficiente: avisa e recomeça (não fecha o programa)."""
+
+
+def _preparar(cap, detector, tela: _Tela, firme: float = 1.5) -> None:
+    """Mostra a câmera em tela cheia até o rosto aparecer firme por `firme` s.
+
+    Assim a calibração só começa quando a pessoa está de fato de frente para a
+    câmera; Enter/espaço começa na hora (se o rosto estiver visível).
+    """
+    desde = None
+    while True:
+        ok, frame = cap.read()
+        if not ok:
+            continue
+        m = detector.processar(frame)
+        t = time.monotonic()
+        img = frame.copy()
+        if m is not None:
+            for lado in OLHO:
+                cont = m.pontos[list(OLHO[lado]["contorno"])].astype(np.int32)
+                cv2.polylines(img, [cont], True, (80, 220, 80), 2, cv2.LINE_AA)
+        img = cv2.flip(img, 1)
+        # encaixa a imagem da câmera no centro da tela, com margem para o texto
+        escala = min(tela.w * 0.6 / img.shape[1], tela.h * 0.6 / img.shape[0])
+        img = cv2.resize(img, None, fx=escala, fy=escala)
+        fundo = np.full((tela.h, tela.w, 3), 24, np.uint8)
+        y0, x0 = (tela.h - img.shape[0]) // 2, (tela.w - img.shape[1]) // 2
+        fundo[y0:y0 + img.shape[0], x0:x0 + img.shape[1]] = img
+        if m is None:
+            desde = None
+            txt, cor = "Rosto nao encontrado: fique de frente para a camera, com luz no rosto", (80, 80, 255)
+        else:
+            desde = desde or t
+            txt, cor = "Rosto encontrado! Fique assim...", (120, 230, 120)
+        tela._centralizado(fundo, txt, y0 - 30, 0.9, cor)
+        tela._centralizado(fundo, "Esc cancela", tela.h - 40, 0.6, (170, 170, 170))
+        cv2.imshow(JANELA, fundo)
+        k = cv2.waitKey(1) & 0xFF
+        if k in (27, ord("q")):
+            raise Cancelado
+        if desde is not None and (t - desde >= firme or k in (13, 32)):
+            return
+
+
 def calibrar(cap, detector, tela_wh: tuple[int, int], usar_olho: str = "ambos",
              n_pontos: int = 13) -> tuple[ModeloOlhar, CalibPalpebra]:
     w, h = tela_wh
     tela = _Tela(w, h)
     try:
-        centro = (w // 2, h // 2)
-        _coletar(cap, detector, tela, 3.0, "Calibracao: sente como vai usar e olhe para o ponto",
-                 "Esc cancela", centro, 14)
-
-        abertos = _coletar(cap, detector, tela, 2.0, "Olhos ABERTOS, olhando o ponto", "", centro, 14)
-        txt = "Agora FECHE os olhos e so abra quando ouvir o bipe"
-        _coletar(cap, detector, tela, 1.5, txt, "", centro, 14)        # tempo para fechar
-        fechados = _coletar(cap, detector, tela, 2.0, txt, "", centro, 14)
-        bipe(990)
-        palp = _calib_palpebra(abertos, fechados)
-
-        alvos, feats = [], []
-        for i, p in enumerate(pontos_calibracao(w, h, n_pontos), 1):
-            txt = f"Siga o ponto com o olhar ({i}/{n_pontos})"
-            _coletar(cap, detector, tela, 0.9, txt, "", p, 30, encolher=True)  # olho chegando
-            ms = _coletar(cap, detector, tela, 1.0, txt, "", p, 8)
-            for m in ms:
-                if palp.fechamento(m.ear_e, "esq") > 0.5 or palp.fechamento(m.ear_d, "dir") > 0.5:
-                    continue  # piscou durante a coleta
-                feats.append(vetor_olhar(m, usar_olho))
-                alvos.append(p)
-        if len(feats) < 4 * n_pontos:
-            raise RuntimeError("Poucas amostras com o rosto visível. Melhore a luz e tente de novo.")
-        modelo = ModeloOlhar()
-        erro = modelo.ajustar(np.array(feats), np.array(alvos, float))
-        tela.desenhar(f"Pronto! Erro medio: {erro:.0f} px", None, 0, "comecando...")
-        cv2.waitKey(900)
-        return modelo, palp
+        while True:
+            try:
+                return _uma_calibracao(cap, detector, tela, usar_olho, n_pontos)
+            except _Falhou as e:
+                bipe(330, 300)
+                t0 = time.monotonic()
+                while time.monotonic() - t0 < 3.5:
+                    if tela.desenhar(str(e), None, 0, "Vamos recomecar...  (Esc cancela)") in (27, ord("q")):
+                        raise Cancelado
     finally:
         tela.fechar()
 
 
+def _uma_calibracao(cap, detector, tela: _Tela, usar_olho: str, n_pontos: int):
+    w, h = tela.w, tela.h
+    _preparar(cap, detector, tela)
+    centro = (w // 2, h // 2)
+    _coletar(cap, detector, tela, 2.0, "Calibracao: sente como vai usar e olhe para o ponto",
+             "Esc cancela", centro, 14)
+
+    abertos = _coletar(cap, detector, tela, 2.0, "Olhos ABERTOS, olhando o ponto", "", centro, 14)
+    txt = "Agora FECHE os olhos e so abra quando ouvir o bipe"
+    _coletar(cap, detector, tela, 1.5, txt, "", centro, 14)        # tempo para fechar
+    fechados = _coletar(cap, detector, tela, 2.0, txt, "", centro, 14)
+    bipe(990)
+    palp = _calib_palpebra(abertos, fechados)
+
+    alvos, feats = [], []
+    for i, p in enumerate(pontos_calibracao(w, h, n_pontos), 1):
+        txt = f"Siga o ponto com o olhar ({i}/{n_pontos})"
+        _coletar(cap, detector, tela, 0.9, txt, "", p, 30, encolher=True)  # olho chegando
+        ms = _coletar(cap, detector, tela, 1.0, txt, "", p, 8)
+        for m in ms:
+            if palp.fechamento(m.ear_e, "esq") > 0.5 or palp.fechamento(m.ear_d, "dir") > 0.5:
+                continue  # piscou durante a coleta
+            feats.append(vetor_olhar(m, usar_olho))
+            alvos.append(p)
+    if len(feats) < 4 * n_pontos:
+        raise _Falhou("Perdi seu rosto durante os pontos (luz fraca ou rosto fora da camera)")
+    modelo = ModeloOlhar()
+    erro = modelo.ajustar(np.array(feats), np.array(alvos, float))
+    tela.desenhar(f"Pronto! Erro medio: {erro:.0f} px", None, 0, "comecando...")
+    cv2.waitKey(900)
+    return modelo, palp
+
+
 def _calib_palpebra(abertos, fechados) -> CalibPalpebra:
     if len(abertos) < 10 or len(fechados) < 10:
-        raise RuntimeError("Não vi o rosto o bastante para medir as pálpebras. Melhore a luz e tente de novo.")
+        raise _Falhou("Nao vi seu rosto o bastante para medir as palpebras")
     ae = float(np.median([m.ear_e for m in abertos]))
     ad = float(np.median([m.ear_d for m in abertos]))
     fe = float(np.median([m.ear_e for m in fechados]))

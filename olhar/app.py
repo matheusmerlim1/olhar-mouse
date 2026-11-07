@@ -134,15 +134,19 @@ def executar(cfg: dict, arq_calib: Path, forcar_calibracao: bool = False) -> Non
     def fazer_calibracao():
         print("Calibrando…")
         modelo, palp = calibrar(cap, detector, tela, olho, cfg["pontos_calibracao"])
-        salvar(arq_calib, modelo, palp, {"tela": list(tela), "olho": olho, "oculos": cfg["oculos"]})
+        salvar(arq_calib, modelo, palp, {"tela": list(tela), "olho": olho, "oculos": cfg["oculos"],
+                                         "camera": str(cfg["camera"])})
         print(f"Calibração salva em {arq_calib} (erro médio {modelo.erro_px:.0f} px).")
         return modelo, palp
 
     modelo = calib_palp = None
     if arq_calib.exists() and not forcar_calibracao:
         modelo, calib_palp, extra = carregar(arq_calib)
-        if extra.get("tela") != list(tela) or extra.get("olho") != olho or extra.get("oculos") != cfg["oculos"]:
-            print("A tela, o olho ou o modo óculos mudou desde a última calibração: calibrando de novo.")
+        # a calibração vale para uma câmera numa posição: trocar a câmera
+        # (webcam ↔ celular) exige calibrar de novo
+        if (extra.get("tela") != list(tela) or extra.get("olho") != olho
+                or extra.get("oculos") != cfg["oculos"] or extra.get("camera") != str(cfg["camera"])):
+            print("A tela, a câmera, o olho ou o modo óculos mudou desde a última calibração: calibrando de novo.")
             modelo = None
     if modelo is None:
         modelo, calib_palp = fazer_calibracao()
