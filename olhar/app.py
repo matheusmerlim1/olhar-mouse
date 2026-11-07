@@ -14,6 +14,7 @@ import numpy as np
 from . import mouse
 from .calibracao import Cancelado, bipe, calibrar
 from .camera import Detector, abrir_camera
+from .celular import CameraCelular, aguardar_celular
 from .filtro import OneEuro2D
 from .gestos import ConfigGestos, Gestos, Palpebras
 from .modelo_olhar import carregar, salvar
@@ -127,7 +128,17 @@ def sem_acento(s: str) -> str:
 
 def executar(cfg: dict, arq_calib: Path, forcar_calibracao: bool = False) -> None:
     tela = mouse.tamanho_tela()
-    cap = abrir_camera(cfg["camera"])
+    celular = str(cfg["camera"]).strip().lower() == "celular"
+    if celular:
+        cap = CameraCelular(RAIZ / "dados")
+        print(f"Câmera do celular: abra {cap.url} (ou leia o QR code na tela).")
+        try:
+            aguardar_celular(cap, tela, "Celular - olhar-mouse")
+        except Exception:
+            cap.release()
+            raise
+    else:
+        cap = abrir_camera(cfg["camera"])
     detector = Detector(RAIZ / "modelos" / "face_landmarker.task", realce=cfg["realce_contraste"])
     olho = cfg["olho"]
 
@@ -168,6 +179,10 @@ def executar(cfg: dict, arq_calib: Path, forcar_calibracao: bool = False) -> Non
         while True:
             ok, frame = cap.read()
             if not ok:
+                if celular and not cap.conectado(3.0):
+                    # celular desconectou (tela apagou, Wi-Fi caiu…): mostra o QR de novo
+                    aguardar_celular(cap, tela, "Celular - olhar-mouse")
+                    palp, gestos, filtro, cong = novo_estado()
                 time.sleep(0.01)
                 continue
             t = time.monotonic()

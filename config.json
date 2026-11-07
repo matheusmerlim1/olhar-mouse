@@ -1,5 +1,5 @@
 {
-  "_ajuda": "camera: 0 = webcam do PC; 1 = segunda webcam ou DroidCam; ou URL do celular, ex. \"http://192.168.0.10:8080/video\" (app IP Webcam). olho: \"ambos\", \"esquerdo\" ou \"direito\". oculos: true filtra mais os picos causados por reflexo na lente (calibre usando os oculos). realce_contraste: true ajuda em ambiente escuro.",
+  "_ajuda": "camera: 0 = webcam do PC; \"celular\" = camera do celular por QR code; 1 = segunda webcam ou DroidCam; ou URL de camera IP. olho: \"ambos\", \"esquerdo\" ou \"direito\". oculos: true filtra mais os picos causados por reflexo na lente (calibre usando os oculos). realce_contraste: true ajuda em ambiente escuro.",
   "camera": 0,
   "olho": "ambos",
   "oculos": false,

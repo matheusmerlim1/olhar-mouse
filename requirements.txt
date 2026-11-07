@@ -1,4 +1,6 @@
 mediapipe>=0.10.14
+qrcode>=7.4
+cryptography>=42
 opencv-python>=4.8
 numpy>=1.26
 pyautogui; sys_platform != "win32"

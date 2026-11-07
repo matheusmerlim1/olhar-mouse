@@ -55,20 +55,33 @@ Dicas: luz vindo de frente ou de lado (não refletindo direto na lente), câmera
 olhos, e incline levemente a armação se aparecer reflexo branco em cima da íris na janela da
 câmera.
 
-## Câmera do celular
+## Câmera do celular (QR code, sem instalar nada)
 
-Em `config.json`, campo `"camera"`:
+1. Dê dois cliques em `iniciar-celular.bat` (ou ponha `"camera": "celular"` no `config.json`).
+2. A tela do PC mostra um **QR code**. Aponte a câmera do celular para ele e abra o link.
+3. Na primeira vez o navegador avisa **"conexão não particular"**. Toque em *Avançado* e
+   *Continuar*. O aviso aparece porque o certificado HTTPS foi gerado pelo seu próprio PC, e o
+   HTTPS é obrigatório: navegador de celular só libera a câmera em página segura.
+4. Permita o uso da câmera. A página mostra quantos quadros por segundo está enviando, e o PC
+   segue para a calibração.
 
-- **IP Webcam** (Android): abra o app, toque em "Iniciar servidor" e use o endereço mostrado,
-  terminando em `/video`, ex. `"camera": "http://192.168.0.10:8080/video"`.
-- **DroidCam** (Android/iPhone): ele instala uma webcam virtual no PC; use o número dela,
-  geralmente `"camera": 1`.
+Precisa de:
+- PC e celular na **mesma rede** (o celular no Wi-Fi do mesmo roteador do PC);
+- na primeira vez, clicar em **Permitir** quando o Windows perguntar se o Python pode acessar a
+  rede (rede privada);
+- celular **parado**, em pé, perto do monitor e de frente para o rosto. Se ele mudar de lugar,
+  aperte F10 para calibrar de novo. Ao trocar de câmera o programa recalibra sozinho;
+- a página aberta e a tela do celular acesa (a página pede para a tela não apagar). Se a conexão
+  cair, o QR code volta para a tela do PC.
 
-Também dá para trocar sem editar o arquivo: `iniciar.bat --camera 1`.
+O endereço tem um código aleatório (guardado em `dados/`), então outro aparelho da rede não
+consegue mandar imagem sem ter lido o QR. As imagens vão direto do celular para o seu PC e não
+passam pela internet.
 
-O celular funciona como câmera para o PC: quem é controlado é o mouse do computador. Para mover
-um ponteiro no próprio celular seria preciso um app Android com serviço de acessibilidade, que
-é outro projeto.
+Ainda funciona: um app de câmera IP (`"camera": "http://IP:8080/video"`, app IP Webcam) ou o
+DroidCam como webcam virtual (`"camera": 1`).
+
+O celular é só a câmera: quem é controlado é o mouse do computador.
 
 ## Um olho só
 
@@ -87,7 +100,7 @@ O clique sai 1,5 s depois da última piscada (é o tempo de saber se vem mais um
 
 | Campo | Padrão | O que faz |
 |---|---|---|
-| `camera` | `0` | número da webcam ou URL do celular |
+| `camera` | `0` | número da webcam, `"celular"` (QR code) ou URL de câmera IP |
 | `olho` | `"ambos"` | `"ambos"`, `"esquerdo"` ou `"direito"` |
 | `oculos` | `false` | filtragem extra contra reflexo na lente |
 | `realce_contraste` | `false` | contraste local (CLAHE), para pouca luz |
@@ -125,7 +138,8 @@ câmera ─► MediaPipe Face Landmarker (478 pontos, com íris)
 | `olhar/modelo_olhar.py` | regressão olhar → tela, salvar/carregar calibração |
 | `olhar/calibracao.py` | telas da calibração |
 | `olhar/filtro.py` | filtro One Euro |
-| `olhar/camera.py` | câmera/celular e detector MediaPipe |
+| `olhar/camera.py` | webcam/câmera IP e detector MediaPipe |
+| `olhar/celular.py` | câmera do celular pelo navegador: servidor HTTPS, certificado, QR code |
 | `olhar/mouse.py` | mover e clicar (API do Windows) |
 | `olhar/app.py` | laço principal |
 | `modelos/face_landmarker.task` | modelo do Google MediaPipe (Apache 2.0) |
