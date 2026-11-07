@@ -106,6 +106,29 @@ class TestFiltro(unittest.TestCase):
         self.assertGreater(x, 1400)  # em 1 s chegou perto do destino
 
 
+class TestConfig(unittest.TestCase):
+    def test_escolhas_do_menu_ficam_em_dados_e_valem_por_cima(self):
+        import json
+        import tempfile
+        from pathlib import Path
+        from olhar.app import ler_config, salvar_config
+        d = Path(tempfile.mkdtemp())
+        base = d / "config.json"
+        base.write_text(json.dumps({"_ajuda": "x", "camera": 0, "oculos": False,
+                                    "gestos": {"janela": 2.0}}), encoding="utf-8")
+        pessoal = d / "dados" / "config.json"
+        cfg = ler_config(base, pessoal)          # sem arquivo pessoal ainda
+        self.assertEqual(cfg["camera"], 0)
+        cfg["camera"], cfg["oculos"] = "usb", True
+        salvar_config(cfg, pessoal)
+        self.assertEqual(json.loads(base.read_text(encoding="utf-8"))["camera"], 0)  # base intocada
+        cfg2 = ler_config(base, pessoal)
+        self.assertEqual((cfg2["camera"], cfg2["oculos"]), ("usb", True))
+        self.assertEqual(cfg2["gestos"]["janela"], 2.0)       # ajuste fino da base continua
+        self.assertEqual(cfg2["gestos"]["lento_min"], 0.30)   # padrão do programa
+        self.assertNotIn("gestos", json.loads(pessoal.read_text(encoding="utf-8")))
+
+
 class TestCongelador(unittest.TestCase):
     def test_volta_para_antes_da_piscada(self):
         c = Congelador(recuo=0.15, espera=0.2)

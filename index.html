@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Olhar-mouse — controle o mouse com os olhos</title>
+<meta name="description" content="Programa gratuito para Windows que move o cursor para onde você olha, pela webcam ou pela câmera do celular, e clica com piscadas lentas. Funciona com óculos.">
+<link rel="icon" href="docs/icone.png">
+<style>
+:root {
+  --bg: #f6f7f9; --surface: #ffffff; --text: #1c2230; --muted: #5b6474;
+  --line: #dde1e7; --accent: #0b6bcb; --accent-ink: #ffffff;
+  --ok: #1a7f37; --code: #eef1f5;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1217; --surface: #171b22; --text: #e6e9ef; --muted: #9aa3b2;
+    --line: #2a303b; --accent: #4c9bff; --accent-ink: #0b1220;
+    --ok: #4ac26b; --code: #1f2530;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+.wrap { max-width: 920px; margin: 0 auto; padding: 0 16px; }
+a { color: var(--accent); }
+code, kbd { font-family: Consolas, "SFMono-Regular", Menlo, monospace; font-size: .9em; }
+code, kbd { background: var(--code); padding: .1em .35em; border-radius: 4px; }
+kbd { border: 1px solid var(--line); }
+.pular {
+  position: absolute; left: 16px; top: -60px; padding: .5rem .9rem; border-radius: 8px;
+  background: var(--accent); color: var(--accent-ink); font-weight: 600; z-index: 10;
+}
+.pular:focus { top: 12px; }
+
+header.wrap { padding-top: 72px; padding-bottom: 40px; }
+.marca { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
+.marca img { width: 56px; height: 56px; }
+.tag { color: var(--muted); font-size: .9rem; letter-spacing: .02em; margin: 0; }
+h1 { font-size: clamp(2rem, 5vw, 2.8rem); line-height: 1.15; margin: 0 0 16px; }
+.lead { font-size: 1.15rem; color: var(--muted); max-width: 62ch; margin: 0 0 28px; }
+.acoes { display: flex; flex-wrap: wrap; gap: 12px; }
+.btn {
+  display: inline-block; padding: .7rem 1.2rem; border-radius: 8px; font-weight: 600;
+  text-decoration: none; border: 1px solid var(--line); color: var(--text); background: var(--surface);
+}
+.btn.primario { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn:hover { filter: brightness(1.06); }
+a:focus-visible, .btn:focus-visible, .tabela:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+.nota { color: var(--muted); font-size: .9rem; margin-top: 10px; }
+
+figure { margin: 0 0 56px; }
+figure img {
+  display: block; width: 100%; height: auto; border-radius: 10px;
+  border: 1px solid var(--line); box-shadow: 0 8px 30px rgba(0,0,0,.12);
+}
+figcaption { color: var(--muted); font-size: .9rem; margin-top: 10px; }
+
+section { padding: 8px 0 40px; }
+h2 { font-size: 1.5rem; margin: 0 0 16px; }
+h3 { font-size: 1.05rem; margin: 0 0 6px; }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; }
+.card p { margin: 0; color: var(--muted); font-size: .95rem; }
+.card .num {
+  display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%;
+  background: var(--code); color: var(--accent); font-weight: 700; font-size: .9rem; margin-bottom: 8px;
+}
+
+.regras { display: grid; gap: 12px; counter-reset: passo; padding: 0; margin: 0; list-style: none; }
+.regras li {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  padding: 16px 18px 16px 60px; position: relative;
+}
+.regras li::before {
+  counter-increment: passo; content: counter(passo);
+  position: absolute; left: 18px; top: 16px; width: 28px; height: 28px; border-radius: 50%;
+  display: grid; place-items: center; font-weight: 700; font-size: .9rem;
+  background: var(--code); color: var(--accent);
+}
+.regras p { margin: 0; color: var(--muted); }
+
+.tabela { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: 10px; overflow: hidden; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: .85rem; color: var(--muted); font-weight: 600; }
+tr:last-child td { border-bottom: 0; }
+td strong { color: var(--ok); }
+
+.passos { padding-left: 1.2rem; margin: 0 0 12px; }
+.passos li { margin-bottom: 6px; }
+@media (prefers-reduced-motion: reduce) {
+  .btn:hover { filter: none; }
+}
+footer { border-top: 1px solid var(--line); padding: 24px 0 40px; color: var(--muted); font-size: .9rem; }
+</style>
+</head>
+<body>
+<a class="pular" href="#conteudo">Pular para o conteúdo</a>
+
+<header class="wrap">
+  <div class="marca">
+    <img src="docs/icone.png" width="56" height="56" alt="">
+    <p class="tag">Projeto 25 · Python · Windows</p>
+  </div>
+  <h1>Olhar-mouse: o cursor vai para onde você olha</h1>
+  <p class="lead">
+    A câmera do computador ou do celular acompanha os seus olhos e move o mouse do Windows.
+    Piscadas lentas viram cliques. Funciona com óculos e também com um olho só.
+  </p>
+  <div class="acoes">
+    <a class="btn primario" href="https://github.com/matheusmerlim1/olhar-mouse/releases/latest/download/olhar-mouse.zip">Baixar o Olhar-mouse (ZIP)</a>
+    <a class="btn" href="https://github.com/matheusmerlim1/olhar-mouse">Ver o código no GitHub</a>
+  </div>
+  <p class="nota">Windows 10/11 · gratuito · o instalador baixa o que faltar (cerca de 400 MB no disco)</p>
+</header>
+
+<main id="conteudo" class="wrap">
+  <figure>
+    <img src="docs/escolha.png" width="960" height="560"
+         alt="Tela inicial do Olhar-mouse perguntando qual câmera usar, com três botões: 1 câmera do computador, 2 celular pelo QR code e 3 celular pelo cabo USB">
+    <figcaption>Ao abrir, você escolhe a câmera. Depois da calibração o programa sai da frente e fica só um ícone de olho perto do relógio.</figcaption>
+  </figure>
+
+  <section aria-labelledby="t-instalar">
+    <h2 id="t-instalar">Instalar no PC</h2>
+    <ol class="regras">
+      <li>
+        <h3>Baixe o ZIP</h3>
+        <p>Pelo botão <a href="https://github.com/matheusmerlim1/olhar-mouse/releases/latest/download/olhar-mouse.zip">Baixar o Olhar-mouse (ZIP)</a>, no alto da página.</p>
+      </li>
+      <li>
+        <h3>Extraia numa pasta</h3>
+        <p>Botão direito no arquivo › <em>Extrair tudo…</em>. Por exemplo, em <code>Documentos\olhar-mouse</code>.</p>
+      </li>
+      <li>
+        <h3>Dois cliques em <code>instalar.bat</code></h3>
+        <p>Ele instala o Python 3.12 se faltar (pelo winget do Windows), prepara um ambiente só do programa,
+           baixa as dependências e cria o atalho <strong>Olhar-mouse</strong> na Área de Trabalho e no menu Iniciar.
+           Na primeira vez leva alguns minutos.</p>
+      </li>
+      <li>
+        <h3>Abra pelo atalho e calibre</h3>
+        <p>Escolha a câmera, olhe para o ponto, feche os olhos até o bipe e siga 13 pontos com o olhar.
+           Cerca de 30 segundos, só na primeira vez ou quando a câmera muda.</p>
+      </li>
+    </ol>
+    <p class="nota">Se o Windows avisar que protegeu o computador ao abrir o <code>.bat</code>, toque em
+      <em>Mais informações › Executar assim mesmo</em>: o arquivo é texto, dá para ler o que ele faz antes.
+      Para remover, use <code>desinstalar.bat</code> e apague a pasta.</p>
+  </section>
+
+  <section aria-labelledby="t-cameras">
+    <h2 id="t-cameras">Três jeitos de ligar a câmera</h2>
+    <div class="cards">
+      <div class="card">
+        <span class="num" aria-hidden="true">1</span>
+        <h3>Câmera do computador</h3>
+        <p>A webcam do notebook ou uma câmera USB. Câmeras virtuais, que não filmam o rosto,
+           não aparecem na lista.</p>
+      </div>
+      <div class="card">
+        <span class="num" aria-hidden="true">2</span>
+        <h3>Celular pelo QR code</h3>
+        <p>O PC mostra um QR code; o celular, no mesmo Wi-Fi, abre a página e envia a câmera frontal.
+           Não precisa instalar nada no celular.</p>
+      </div>
+      <div class="card">
+        <span class="num" aria-hidden="true">3</span>
+        <h3>Celular pelo cabo USB</h3>
+        <p>Android ligado no cabo, sem Wi-Fi e sem internet. Precisa da <em>Depuração USB</em> ligada
+           uma vez; a página abre sozinha no celular.</p>
+      </div>
+    </div>
+    <p class="nota">No Android 14 ou mais novo, o próprio celular pode virar webcam pelo cabo:
+      na notificação “Carregando via USB”, escolha <em>Webcam</em>. Ele aparece como câmera do computador.</p>
+  </section>
+
+  <section aria-labelledby="t-gestos">
+    <h2 id="t-gestos">Gestos</h2>
+    <div class="tabela" role="region" aria-label="Tabela de gestos e teclas" tabindex="0">
+      <table>
+        <thead><tr><th scope="col">Gesto</th><th scope="col">Ação</th></tr></thead>
+        <tbody>
+          <tr><td>Olhar para um ponto da tela</td><td>move o cursor</td></tr>
+          <tr><td>2 piscadas lentas com os dois olhos</td><td><strong>clique direito</strong></td></tr>
+          <tr><td>2 piscadelas lentas (só um olho fecha)</td><td><strong>clique esquerdo</strong></td></tr>
+          <tr><td>Um olho fechado e o outro pisca 2 vezes devagar</td><td><strong>clique esquerdo</strong></td></tr>
+          <tr><td><kbd>F9</kbd></td><td>pausa ou retoma</td></tr>
+          <tr><td><kbd>F10</kbd></td><td>refaz a calibração</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="nota">“Lenta” é olho fechado entre 0,3 e 1,5 segundo. Piscadas normais, que são rápidas, são ignoradas,
+      e enquanto o olho está fechado o cursor fica parado: o clique cai onde você estava olhando.
+      Com um olho só: 2 piscadas lentas = clique direito, 3 = clique esquerdo.</p>
+  </section>
+
+  <section aria-labelledby="t-oculos">
+    <h2 id="t-oculos">Quem usa óculos</h2>
+    <p>O detector continua achando olhos e íris através das lentes. O que muda é a medida de “olho aberto”:
+       a armação e o reflexo deslocam a estimativa das pálpebras. Por isso a calibração mede o seu olho
+       aberto e fechado. Basta calibrar usando os óculos. No menu do ícone, <em>Uso óculos</em> filtra
+       ainda mais os reflexos da lente.</p>
+  </section>
+
+  <section aria-labelledby="t-priv">
+    <h2 id="t-priv">Privacidade</h2>
+    <ul class="passos">
+      <li>Tudo roda no seu computador. Nenhuma imagem vai para a internet.</li>
+      <li>Pelo QR code, a imagem vai do celular direto para o PC pela rede da casa, protegida por HTTPS
+          e por um código aleatório no endereço.</li>
+      <li>Pelo cabo, a conexão nem sai do cabo.</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="t-limites">
+    <h2 id="t-limites">Limites</h2>
+    <p>Uma câmera comum acerta o olhar com erro de alguns centímetros na tela: dá para clicar em botões e
+       ícones, não em alvos minúsculos. Aumentar a escala do Windows ajuda. Virar um pouco a cabeça também
+       move o cursor, o que serve para ajustes finos.</p>
+  </section>
+</main>
+
+<footer class="wrap">
+  <p>Olhar-mouse · <a href="https://github.com/matheusmerlim1/olhar-mouse">código no GitHub</a> ·
+     detecção de rosto pelo <a href="https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker">MediaPipe Face Landmarker</a> (Google, Apache 2.0)</p>
+</footer>
+
+<!-- === Botao de volta ao portfolio - cole antes de </body> === -->
+<nav aria-label="Portf&oacute;lio">
+<a id="mr-portfolio-btn" href="https://matheusmerlim1.github.io/" target="_blank" rel="noopener"
+   aria-label="Portf&oacute;lio de Matheus Raposo (abre em nova aba)" title="Ver todos os meus projetos">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/>
+  </svg>
+  <span>Portf&oacute;lio</span>
+</a>
+</nav>
+<style>
+#mr-portfolio-btn {
+  position: fixed; top: 12px; right: 12px; z-index: 2147483000;
+  display: inline-flex; align-items: center; gap: .4rem;
+  padding: .42rem .8rem; border-radius: 999px;
+  font: 600 13px/1 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: #e8edf5; text-decoration: none; white-space: nowrap;
+  background: rgba(18,24,38,.92);
+  border: 1px solid rgba(88,166,255,.45);
+  box-shadow: 0 2px 12px rgba(0,0,0,.35);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  transition: transform .15s, border-color .15s, background .15s;
+}
+#mr-portfolio-btn:hover {
+  transform: translateY(-1px); color: #fff; text-decoration: none;
+  background: rgba(24,32,50,.96); border-color: #58a6ff;
+}
+#mr-portfolio-btn:focus-visible { outline: 2px solid #58a6ff; outline-offset: 2px; box-shadow: 0 0 0 6px rgba(18,24,38,.92); }
+@media (max-width: 520px) {
+  #mr-portfolio-btn { padding: .45rem; }
+  #mr-portfolio-btn span { display: none; }
+}
+@media print { #mr-portfolio-btn { display: none; } }
+</style>
+<script>
+/* Abre espaco para o botao em vez de cobrir o que ja existia no canto.
+   1) empurra para a esquerda o conteudo da barra que ocupa aquele espaco;
+   2) se ainda sobrar sobreposicao, desloca o proprio item. */
+(function () {
+  var btn = document.getElementById('mr-portfolio-btn');
+  if (!btn) return;
+
+  var desfazer = [];
+
+  function limpar() {
+    for (var i = 0; i < desfazer.length; i++) desfazer[i]();
+    desfazer = [];
+  }
+
+  function guardar(el, prop) {
+    var antes = el.style[prop];
+    desfazer.push(function () { el.style[prop] = antes; });
+  }
+
+  /* item discreto = nao ocupa quase toda a largura; e um controle, rotulo ou icone */
+  function ehItem(el) {
+    if (!el || el === document.body || el === document.documentElement) return false;
+    return el.getBoundingClientRect().width < innerWidth * 0.7;
+  }
+
+  /* sobe ate a barra que contem o item (algo largo o bastante para ter padding) */
+  function barra(el) {
+    for (var n = 0; el && n < 8; n++, el = el.parentElement) {
+      if (el === document.body || el === document.documentElement) return null;
+      if (el.getBoundingClientRect().width >= innerWidth * 0.6) return el;
+    }
+    return null;
+  }
+
+  function encosta(a, b) {
+    return !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
+  }
+
+  function varrer() {
+    var r = btn.getBoundingClientRect();
+    var y = Math.round(r.top + r.height / 2);
+    var achados = [];
+    btn.style.visibility = 'hidden';
+    for (var x = Math.floor(r.right); x > r.left - 10; x -= 8) {
+      if (x < 1 || x > innerWidth - 1) continue;
+      var sob = document.elementFromPoint(x, y);
+      if (ehItem(sob) && achados.indexOf(sob) < 0) achados.push(sob);
+    }
+    btn.style.visibility = '';
+    return achados;
+  }
+
+  function ajustar() {
+    limpar();
+    var r = btn.getBoundingClientRect();
+    if (!r.width) return;
+    var reserva = Math.ceil(r.width + 20);
+
+    /* 1) padding na barra: desloca o conteudo dela para a esquerda */
+    var barras = [];
+    varrer().forEach(function (item) {
+      var b = barra(item);
+      if (b && barras.indexOf(b) < 0) barras.push(b);
+    });
+    barras.forEach(function (b) {
+      if ((parseFloat(getComputedStyle(b).paddingRight) || 0) >= reserva) return;
+      guardar(b, 'paddingRight');
+      b.style.paddingRight = reserva + 'px';
+    });
+
+    /* 2) o que continuar embaixo do botao (tipicamente position:absolute,
+          que nao anda com padding) e deslocado individualmente */
+    r = btn.getBoundingClientRect();
+    varrer().forEach(function (item) {
+      if (!encosta(item.getBoundingClientRect(), r)) return;
+      var cs = getComputedStyle(item);
+      if (cs.position === 'absolute' || cs.position === 'fixed') {
+        var atual = parseFloat(cs.right);
+        guardar(item, 'right');
+        item.style.right = (isNaN(atual) ? reserva : atual + reserva) + 'px';
+      } else {
+        guardar(item, 'marginRight');
+        item.style.marginRight =
+          ((parseFloat(cs.marginRight) || 0) + reserva) + 'px';
+      }
+    });
+
+    /* 3) rede de seguranca: o que insistir em ficar embaixo do botao e
+          deslocado no proprio elemento. transform sempre move, seja qual
+          for o position, o display ou o container. */
+    for (var tent = 0; tent < 3; tent++) {
+      r = btn.getBoundingClientRect();
+      var teimosos = varrer().filter(function (item) {
+        return encosta(item.getBoundingClientRect(), r);
+      });
+      if (!teimosos.length) break;
+      teimosos.forEach(function (item) {
+        var caixa = item.getBoundingClientRect();
+        var passo = Math.ceil(caixa.right - r.left + 10);
+        if (passo <= 0) return;
+        guardar(item, 'transform');
+        item.style.transform = 'translateX(-' + passo + 'px)';
+      });
+    }
+
+    btn.setAttribute('data-mr-ok', '1');   /* marca que o ajuste ja rodou */
+  }
+
+  var pendente = 0;
+  function agendar() {
+    /* sem requestAnimationFrame de proposito: ele nao dispara quando a pagina
+       esta em aba oculta ou em iframe fora da tela, e as leituras de layout
+       abaixo ja forcam o recalculo sozinhas */
+    clearTimeout(pendente);
+    pendente = setTimeout(ajustar, 60);
+  }
+
+  agendar();
+  addEventListener('DOMContentLoaded', agendar);
+  addEventListener('load', agendar);
+  addEventListener('resize', agendar);
+
+  /* muita pagina monta o cabecalho por JS depois do load; refaz o calculo
+     quando o DOM mudar e em algumas passadas tardias, por seguranca */
+  if (window.MutationObserver) {
+    new MutationObserver(agendar).observe(document.documentElement,
+      { childList: true, subtree: true });
+  }
+  [400, 1200, 3000].forEach(function (t) { setTimeout(agendar, t); });
+})();
+</script>
+<!-- === fim do botao === -->
+
+</body>
+</html>

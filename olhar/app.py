@@ -41,10 +41,21 @@ JANELA = "olhar-mouse - camera (Esc fecha, P pausa, C calibra)"
 JANELA_QR = "Celular - olhar-mouse"
 
 
-def ler_config(caminho: Path) -> dict:
+ESCOLHAS_DO_MENU = ("camera", "olho", "oculos", "som", "mostrar_camera", "realce_contraste", "perguntar_camera")
+
+
+def ler_config(caminho: Path, pessoal: Path | None = None) -> dict:
+    """Padrões do programa ← config.json (ajustes finos) ← dados/config.json (escolhas do menu).
+
+    As escolhas feitas pelo menu ficam em dados/, fora do git: atualizar o
+    programa não apaga as preferências da pessoa e o repositório não muda a
+    cada clique no menu.
+    """
     cfg = json.loads(json.dumps(PADRAO))
-    if caminho.exists():
-        dado = json.loads(caminho.read_text(encoding="utf-8"))
+    for arq in (caminho, pessoal):
+        if arq is None or not arq.exists():
+            continue
+        dado = json.loads(arq.read_text(encoding="utf-8"))
         for k, v in dado.items():
             if isinstance(v, dict) and isinstance(cfg.get(k), dict):
                 cfg[k].update(v)
@@ -55,13 +66,11 @@ def ler_config(caminho: Path) -> dict:
     return cfg
 
 
-def salvar_config(cfg: dict, caminho: Path) -> None:
-    """Grava as escolhas do menu no config.json, preservando a ajuda e a ordem."""
-    dado = json.loads(caminho.read_text(encoding="utf-8")) if caminho.exists() else {}
-    for k in ("camera", "olho", "oculos", "som", "mostrar_camera", "realce_contraste", "perguntar_camera"):
-        if k in cfg:
-            dado[k] = cfg[k]
-    caminho.write_text(json.dumps(dado, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+def salvar_config(cfg: dict, pessoal: Path) -> None:
+    """Grava as escolhas do menu em dados/config.json."""
+    pessoal.parent.mkdir(parents=True, exist_ok=True)
+    dado = {k: cfg[k] for k in ESCOLHAS_DO_MENU if k in cfg}
+    pessoal.write_text(json.dumps(dado, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
 def montar_gestos(cfg: dict) -> tuple[ConfigGestos, int]:
@@ -389,8 +398,8 @@ def main(argv=None):
     if not _uma_instancia():
         return
 
-    arq_cfg = Path(args.config)
-    cfg = ler_config(arq_cfg)
+    arq_cfg = RAIZ / "dados" / "config.json"   # escolhas do menu (fora do git)
+    cfg = ler_config(Path(args.config), arq_cfg)
     if args.camera is not None:
         if args.camera.strip().lower() == "computador":
             # primeira câmera real do Windows (as virtuais, como a do OBS, não contam)

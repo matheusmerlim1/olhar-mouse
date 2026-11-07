@@ -15,6 +15,16 @@ próxima. A piscada normal (rápida, involuntária) é ignorada. Fechar os olhos
 (para descansar) cancela o gesto. Enquanto o olho está fechado o cursor fica parado, e o clique
 cai onde você estava olhando antes de piscar.
 
+## Instalar
+
+Página de download: **https://matheusmerlim1.github.io/olhar-mouse/**
+
+1. Baixe o [olhar-mouse.zip](https://github.com/matheusmerlim1/olhar-mouse/releases/latest/download/olhar-mouse.zip) e extraia numa pasta.
+2. Dois cliques em `instalar.bat`: instala o Python 3.12 se faltar (winget), cria o ambiente do
+   programa, baixa as dependências (~380 MB) e cria o atalho **Olhar-mouse** na Área de Trabalho e
+   no menu Iniciar. Pode rodar de novo para atualizar ou reparar.
+3. Para remover: `desinstalar.bat` (tira atalhos e a abertura com o Windows) e apague a pasta.
+
 ## Como usar
 
 O programa roda **sem janela**, como o ditado por voz (projeto 24). Ao abrir, ele mostra só a
@@ -217,8 +227,9 @@ câmera ─► MediaPipe Face Landmarker (478 pontos, com íris)
 | `olhar/escolha.py` | tela inicial com as 3 opções de câmera |
 | `modelos/face_landmarker.task` | modelo do Google MediaPipe (Apache 2.0) |
 
-A calibração fica em `dados/calibracao.json` (não vai para o git; é de cada pessoa e de cada
-máquina).
+A calibração fica em `dados/calibracao.json` e as escolhas do menu em `dados/config.json` (não vão
+para o git; são de cada pessoa e de cada máquina). O `config.json` da raiz guarda os padrões e os
+ajustes finos.
 
 ## Testes
 
