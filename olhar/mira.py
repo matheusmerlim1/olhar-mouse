@@ -1,10 +1,12 @@
-"""Teste de mira: olhe para o alvo, veja onde o anel cai e corrija a diferença.
+"""Teste de mira (F8): rodadas que recalibram até o anel acertar o alvo.
 
-A cabeça se mexe, então a correção não é um número fixo: ela depende de onde a cabeça está
-(posição na imagem, distância, giro e inclinação), e a referência acompanha a cabeça. Por isso
-parte do teste pede para mexer a cabeça de propósito, mantendo o olhar no alvo.
+Em cada rodada a pessoa olha para alvos em todas as telas e vê onde o anel cai. O erro da
+rodada é medido ANTES de aprender com ela (é o erro real); depois o modelo é refeito com
+tudo o que já foi medido e a rodada seguinte já usa o resultado. Para quando chega à meta,
+quando deixa de melhorar, no limite de rodadas ou no Esc, e fica com a melhor versão medida.
 
-A correção só é aceita se errar menos em pontos que não foram usados para aprendê-la.
+A cabeça se mexe: parte dos alvos pede para mexer a cabeça sem tirar os olhos dele, e uma
+correção depende de onde a cabeça está (posição, distância, giro e inclinação).
 """
 from __future__ import annotations
 
@@ -16,20 +18,21 @@ import cv2
 import numpy as np
 
 from .calibracao import JANELA, Cancelado, _Tela
+from .modelo_olhar import ModeloOlhar
 from .olhos import vetor_olhar
 
-CHEGAR, CHEGAR_MEXENDO, MEDIR = 1.2, 2.2, 1.0
-PONTOS = (
-    (0.50, 0.50, "Olhe para o alvo"),
-    (0.15, 0.15, "Olhe para o alvo"),
-    (0.85, 0.15, "Olhe para o alvo"),
-    (0.15, 0.85, "Olhe para o alvo"),
-    (0.85, 0.85, "Olhe para o alvo"),
-    (0.50, 0.15, "Mova a cabeca para a ESQUERDA e continue olhando o alvo"),
-    (0.50, 0.85, "Mova a cabeca para a DIREITA e continue olhando o alvo"),
-    (0.15, 0.50, "Chegue mais PERTO e continue olhando o alvo"),
-    (0.85, 0.50, "Afaste-se um pouco e continue olhando o alvo"),
-    (0.50, 0.50, "Levante o rosto e continue olhando o alvo"),
+CHEGAR, CHEGAR_MEXENDO, MEDIR = 1.3, 2.2, 1.0
+META_PX = 70
+MAX_RODADAS = 6
+PACIENCIA = 2             # rodadas seguidas sem melhorar antes de parar
+ESPERA_RODADA = 2.5       # segundos mostrando o resultado de cada rodada
+ESPERA_FINAL = 12.0
+INSTRUCOES = (
+    "Mova a cabeca para a ESQUERDA e continue olhando o alvo",
+    "Mova a cabeca para a DIREITA e continue olhando o alvo",
+    "Chegue mais PERTO e continue olhando o alvo",
+    "Afaste-se um pouco e continue olhando o alvo",
+    "Levante o rosto e continue olhando o alvo",
 )
 # variação mínima de cada medida da cabeça (x, y, tamanho, giro, inclinação): abaixo disso é
 # ruído, e dividir por ela amplificaria o ruído
@@ -93,14 +96,47 @@ def ajustar(cabecas: np.ndarray, residuos: np.ndarray):
     return AjusteCabeca(ref, escala, c), base, erro_melhor
 
 
-def salvar_ajuste(arq_calib: Path, ajuste: AjusteCabeca) -> None:
+def reajustar(conjunto: list[dict]):
+    """Refaz o modelo com todos os pontos medidos e a correção da cabeça sobre o que sobrou."""
+    V = np.array([p["v"] for p in conjunto], float)
+    A = np.array([p["alvo"] for p in conjunto], float)
+    modelo = ModeloOlhar()
+    modelo.ajustar(V, A)
+    com_cabeca = [p for p in conjunto if p.get("cab") is not None]
+    if len(com_cabeca) < 5:
+        return modelo, None
+    H = np.array([p["cab"] for p in com_cabeca], float)
+    R = np.array([np.subtract(p["alvo"], modelo.prever(p["v"])) for p in com_cabeca], float)
+    return modelo, ajustar(H, R)[0]
+
+
+def salvar_mira(arq_calib: Path, modelo, ajuste, pontos: list[dict]) -> None:
     dados = json.loads(arq_calib.read_text(encoding="utf-8"))
-    dados["ajuste"] = ajuste.para_dict()
+    dados["olhar"] = modelo.para_dict()
+    dados["ajuste"] = ajuste.para_dict() if ajuste else None
+    dados["pontos"] = pontos
     arq_calib.write_text(json.dumps(dados, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 def vetor_cabeca(detector, m) -> np.ndarray:
     return np.concatenate([detector.cabeca, [m.yaw, m.pitch]])
+
+
+def pontos_rodada(monitores, rodada: int, rng) -> list[tuple]:
+    """Centro e cantos de cada tela, um pouco diferentes a cada rodada, 2 com a cabeça mexendo."""
+    roteiro = []
+    for n_tela, (mx, my, mw, mh) in enumerate(monitores):
+        lugares = [(0.5, 0.5), (0.15, 0.15), (0.85, 0.15), (0.15, 0.85), (0.85, 0.85)]
+        mexer = {(rodada + n_tela) % 5, (rodada + n_tela + 2) % 5}
+        for i, (fx, fy) in enumerate(lugares):
+            alvo = (int(mx + mw * np.clip(fx + rng.uniform(-0.07, 0.07), 0.06, 0.94)),
+                    int(my + mh * np.clip(fy + rng.uniform(-0.07, 0.07), 0.06, 0.94)))
+            if i in mexer:
+                roteiro.append((alvo, INSTRUCOES[(rodada + i + n_tela) % len(INSTRUCOES)], CHEGAR_MEXENDO))
+            else:
+                # 1º alvo de cada tela: tempo para virar o rosto até ela
+                roteiro.append((alvo, "Olhe para o alvo", CHEGAR_MEXENDO if i == 0 else CHEGAR))
+    return roteiro
 
 
 def _alvo(img, p, cor=(60, 120, 255)):
@@ -114,10 +150,11 @@ def _anel(img, p):
 
 
 def _medir_ponto(cap, detector, tela, modelo, olho, palp, suavizador, ajuste, alvo, texto, chegar):
-    """Mostra o alvo e o anel ao vivo. Devolve (previsto sem correção, cabeça) ou None."""
+    """Mostra o alvo e o anel ao vivo. Devolve (vetor do olhar, cabeça) ou None."""
     vetores, cabecas = [], []
     t0 = time.monotonic()
     anel = None
+    tela.ativar(alvo)
     while (t := time.monotonic() - t0) < chegar + MEDIR:
         ok, frame = cap.read()
         if ok:
@@ -135,8 +172,8 @@ def _medir_ponto(cap, detector, tela, modelo, olho, palp, suavizador, ajuste, al
                     cabecas.append(cab)
         img = np.full((tela.h, tela.w, 3), 24, np.uint8)
         tela._centralizado(img, texto, 60, 0.9)
-        tela._centralizado(img, "O anel mostra para onde o programa acha que voce olha  -  Esc cancela",
-                           tela.h - 40, 0.6, (170, 170, 170))
+        tela._centralizado(img, "O anel mostra para onde o programa acha que voce olha  -  Esc encerra",
+                           tela.alt - 40, 0.6, (170, 170, 170))
         _alvo(img, alvo)
         if anel is not None:
             _anel(img, anel)
@@ -145,61 +182,85 @@ def _medir_ponto(cap, detector, tela, modelo, olho, palp, suavizador, ajuste, al
             raise Cancelado
     if len(vetores) < 5:
         return None
-    return modelo.prever(np.median(vetores, axis=0)), np.median(cabecas, axis=0)
+    return np.median(vetores, axis=0), np.median(cabecas, axis=0)
 
 
-def _resultado(tela, medidos, atual, novo, antes, depois) -> bool:
-    """Mostra alvos e erros. True se a pessoa aceitou a correção nova."""
+def _mostrar_rodada(tela, rodada, erro, melhor, medidos, fim, motivo) -> bool:
+    """Resultado da rodada: cada alvo ligado ao ponto em que o anel caiu. True = Esc."""
+    tela.ativar(None)
+    limite = time.monotonic() + (ESPERA_FINAL if fim else ESPERA_RODADA)
     while True:
         img = np.full((tela.h, tela.w, 3), 24, np.uint8)
-        for alvo, previsto, cab in medidos:
-            corr = atual.aplicar(cab) if atual else (0.0, 0.0)
-            p = (int(np.clip(previsto[0] + corr[0], 0, tela.w - 1)), int(np.clip(previsto[1] + corr[1], 0, tela.h - 1)))
+        for alvo, ponto in medidos:
+            p = (int(np.clip(ponto[0], 0, tela.w - 1)), int(np.clip(ponto[1], 0, tela.h - 1)))
             _alvo(img, alvo)
-            cv2.line(img, alvo, p, (120, 120, 120), 1, cv2.LINE_AA)
-            cv2.circle(img, p, 5, (120, 120, 120), -1, cv2.LINE_AA)
-            if novo:
-                n = novo.aplicar(cab)
-                q = (int(np.clip(previsto[0] + n[0], 0, tela.w - 1)), int(np.clip(previsto[1] + n[1], 0, tela.h - 1)))
-                cv2.line(img, alvo, q, (120, 230, 120), 2, cv2.LINE_AA)
-                cv2.circle(img, q, 6, (120, 230, 120), -1, cv2.LINE_AA)
-        if novo:
-            tela._centralizado(img, f"Erro atual: {antes:.0f} px   -   com a correcao: {depois:.0f} px", 60, 1.0)
-            pe = "Enter: aplicar a correcao   -   Esc: descartar   (cinza = agora, verde = corrigido)"
-        else:
-            tela._centralizado(img, f"Erro atual: {antes:.0f} px   -   nenhuma correcao melhorou a mira", 60, 1.0)
-            pe = "Enter ou Esc: fechar   -   tente recalibrar (F10)"
-        tela._centralizado(img, pe, tela.h - 40, 0.7, (200, 200, 200))
+            cv2.line(img, alvo, p, (120, 230, 120), 2, cv2.LINE_AA)
+            cv2.circle(img, p, 6, (120, 230, 120), -1, cv2.LINE_AA)
+        tela._centralizado(img, f"Rodada {rodada}: erro {erro:.0f} px   -   melhor ate agora {melhor:.0f} px   -   meta {META_PX} px",
+                           60, 1.0)
+        tela._centralizado(img, motivo if fim else "Recalibrado. Proxima rodada ja usa o ajuste...", 110, 0.8, (120, 230, 120))
+        tela._centralizado(img, "Enter ou Esc: fechar" if fim else "Esc: encerrar e ficar com a melhor", tela.alt - 40, 0.7, (200, 200, 200))
         cv2.imshow(JANELA, img)
         k = cv2.waitKey(30) & 0xFF
-        if k in (13, 10):
-            return novo is not None
         if k in (27, ord("q")):
+            return True
+        if (fim and k in (13, 10)) or time.monotonic() >= limite:
             return False
 
 
-def testar(cap, detector, tela_wh, modelo, olho, palp, suavizador, ajuste_atual):
-    """Roda o teste. Devolve a correção aceita, ou None (mantém a atual)."""
+def testar(cap, detector, tela_wh, modelo, olho, palp, novo_suavizador, ajuste_atual, pontos_salvos=None):
+    """Roda as rodadas. Devolve (modelo, ajuste, pontos) da melhor versão, ou None se a atual já era a melhor."""
     w, h = tela_wh
     tela = _Tela(w, h)
+    rng = np.random.default_rng()
+    conjunto = list(pontos_salvos or [])
+    atual_m, atual_a = modelo, ajuste_atual
+    melhor = None
+    sem_melhora = 0
     try:
-        medidos = []
-        for fx, fy, texto in PONTOS:
-            alvo = (int(fx * w), int(fy * h))
-            mexendo = "Olhe para o alvo" != texto
-            r = _medir_ponto(cap, detector, tela, modelo, olho, palp, suavizador, ajuste_atual, alvo, texto,
-                             CHEGAR_MEXENDO if mexendo else CHEGAR)
-            if r is not None:
-                medidos.append((alvo, r[0], r[1]))
-        if len(medidos) < 5:
-            raise RuntimeError("Poucos pontos medidos no teste de mira: confira a câmera e tente de novo.")
-        cabecas = np.array([c for _, _, c in medidos])
-        residuos = np.array([np.subtract(a, p) for a, p, _ in medidos], float)
-        novo, base, depois = ajustar(cabecas, residuos)
-        corr = np.array([ajuste_atual.aplicar(c) if ajuste_atual else (0.0, 0.0) for c in cabecas])
-        antes = float(np.linalg.norm(residuos - corr, axis=1).mean())
-        print(f"Teste de mira: {len(medidos)} pontos, erro atual {antes:.0f} px, sem correção {base:.0f} px, "
-              f"com a nova {depois:.0f} px, correção encontrada: {novo is not None}")
-        return novo if _resultado(tela, medidos, ajuste_atual, novo, antes, depois) else None
+        for rodada in range(1, MAX_RODADAS + 1):
+            roteiro = pontos_rodada(tela.monitores, rodada, rng)
+            medidos = []
+            try:
+                for alvo, texto, chegar in roteiro:
+                    r = _medir_ponto(cap, detector, tela, atual_m, olho, palp, novo_suavizador(), atual_a,
+                                     alvo, texto, chegar)
+                    if r is not None:
+                        medidos.append((alvo, r[0], r[1]))
+            except Cancelado:
+                break
+            if len(medidos) < max(4, len(roteiro) // 2):
+                if melhor is None:
+                    raise RuntimeError("Poucos pontos medidos no teste de mira: confira a câmera e tente de novo.")
+                break
+
+            # erro REAL desta rodada: com o modelo em uso, antes de aprender com ela
+            pontos = []
+            for alvo, v, cab in medidos:
+                corr = atual_a.aplicar(cab) if atual_a else (0.0, 0.0)
+                p = atual_m.prever(v)
+                pontos.append((alvo, (p[0] + corr[0], p[1] + corr[1])))
+            erro = float(np.mean([np.hypot(a[0] - p[0], a[1] - p[1]) for a, p in pontos]))
+            if melhor is None or erro < melhor[0]:
+                melhor, sem_melhora = (erro, atual_m, atual_a), 0
+            else:
+                sem_melhora += 1
+            print(f"Teste de mira, rodada {rodada}: {len(medidos)} pontos, erro {erro:.0f} px (melhor {melhor[0]:.0f} px)")
+
+            if erro <= META_PX:
+                motivo, fim = "Meta alcancada!", True
+            elif sem_melhora >= PACIENCIA:
+                motivo, fim = "Parou de melhorar: fiquei com a melhor rodada.", True
+            elif rodada == MAX_RODADAS:
+                motivo, fim = "Limite de rodadas: fiquei com a melhor.", True
+            else:
+                motivo, fim = "", False
+            conjunto += [{"v": np.asarray(v).tolist(), "alvo": list(a), "cab": np.asarray(c).tolist()} for a, v, c in medidos]
+            atual_m, atual_a = reajustar(conjunto)
+            if _mostrar_rodada(tela, rodada, erro, melhor[0], pontos, fim, motivo) or fim:
+                break
     finally:
         tela.fechar()
+    if melhor is None or (melhor[1] is modelo and melhor[2] is ajuste_atual):
+        return None
+    return melhor[1], melhor[2], conjunto

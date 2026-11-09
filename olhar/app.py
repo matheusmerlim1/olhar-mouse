@@ -21,7 +21,7 @@ from .camera import Detector, abrir_camera
 from .celular import CameraCelular, aguardar_celular
 from .filtro import ESTABILIDADE, Estabilizador, MedianaVetor, OneEuro2D
 from .gestos import ConfigGestos, Gestos, Palpebras
-from .mira import AjusteCabeca, salvar_ajuste, testar as testar_mira, vetor_cabeca
+from .mira import AjusteCabeca, salvar_mira, testar as testar_mira, vetor_cabeca
 from .modelo_olhar import carregar, salvar
 from .olhos import OLHO, vetor_olhar
 from .ponteiro import PonteiroOlhar
@@ -205,6 +205,8 @@ def _fechar_janela(nome: str) -> None:
 def executar(cfg: dict, arq_calib: Path, ctl, ui, forcar_calibracao: bool = False) -> None:
     """Abre a câmera, calibra se preciso e segue o olhar até Sair ou mudar a config."""
     tela = mouse.tamanho_tela()
+    origem = mouse.origem()
+    monitores = mouse.monitores_relativos()
     console = getattr(ui, "console", False)
 
     def parar():
@@ -253,7 +255,8 @@ def executar(cfg: dict, arq_calib: Path, ctl, ui, forcar_calibracao: bool = Fals
         ui.definir_estado("calibrando")
         modelo, palp = calibrar(cap, detector, tela, olho, cfg["pontos_calibracao"])
         salvar(arq_calib, modelo, palp, {"tela": list(tela), "olho": olho, "oculos": cfg["oculos"],
-                                         "camera": str(cfg["camera"])})
+                                         "camera": str(cfg["camera"]),
+                                         "pontos": getattr(modelo, "pontos", [])})
         print(f"Calibração salva (erro médio {modelo.erro_px:.0f} px).")
         print(f"Modelo: {modelo.forma}, ridge {modelo.ridge}, desvio u/v/yaw/pitch {modelo.desvio.round(4).tolist()}, "
               f"horizontal {modelo.coef[:, 0].round(0).tolist()}, vertical {modelo.coef[:, 1].round(0).tolist()}")
@@ -261,9 +264,11 @@ def executar(cfg: dict, arq_calib: Path, ctl, ui, forcar_calibracao: bool = Fals
 
     try:
         modelo = calib_palp = ajuste = None
+        pontos_mira = []
         if arq_calib.exists() and not forcar_calibracao:
             modelo, calib_palp, extra = carregar(arq_calib)
             ajuste = AjusteCabeca.de_dict(extra.get("ajuste"))
+            pontos_mira = extra.get("pontos") or []
             # a calibração vale para uma câmera numa posição: trocar a câmera
             # (webcam ↔ celular), a tela, o olho ou os óculos exige calibrar de novo
             if (extra.get("tela") != list(tela) or extra.get("olho") != olho
@@ -272,7 +277,7 @@ def executar(cfg: dict, arq_calib: Path, ctl, ui, forcar_calibracao: bool = Fals
                 modelo = None
         if modelo is None:
             modelo, calib_palp = fazer_calibracao()
-            ajuste = None
+            ajuste, pontos_mira = None, modelo.pontos
 
         cfg_g, mediana = montar_gestos(cfg)
 
@@ -367,8 +372,9 @@ def executar(cfg: dict, arq_calib: Path, ctl, ui, forcar_calibracao: bool = Fals
                         correcao = ajuste.aplicar(vetor_cabeca(detector, m)) if ajuste else (0.0, 0.0)
                         alvo = filtro(vetor, modelo, t, correcao)
                         if alvo is not None:
-                            x = int(np.clip(alvo[0], 0, tela[0] - 1))
-                            y = int(np.clip(alvo[1], 0, tela[1] - 1))
+                            # o modelo trabalha na área de todas as telas; o Windows, em coordenadas absolutas
+                            x, y = mouse.prender(int(alvo[0]), int(alvo[1]), monitores)
+                            x, y = x + origem[0], y + origem[1]
                             cong.registrar(t, x, y)
                             # só mexe no cursor quando o ponto MUDA: parado, o mouse físico fica livre
                             if (x, y) != colocado:
@@ -443,11 +449,11 @@ def executar(cfg: dict, arq_calib: Path, ctl, ui, forcar_calibracao: bool = Fals
                 ui.definir_estado("calibrando")
                 try:
                     novo = testar_mira(cap, detector, tela, modelo, olho, calib_palp,
-                                       Suavizador(cfg.get("estabilidade", "media")), ajuste)
+                                       lambda: Suavizador(cfg.get("estabilidade", "media")), ajuste, pontos_mira)
                     if novo is not None:
-                        ajuste = novo
-                        salvar_ajuste(arq_calib, ajuste)
-                        ui.notificar("Mira ajustada", "A correção foi salva e acompanha a posição da cabeça.")
+                        modelo, ajuste, pontos_mira = novo
+                        salvar_mira(arq_calib, modelo, ajuste, pontos_mira)
+                        ui.notificar("Mira ajustada", "A melhor versão medida foi salva.")
                 except Cancelado:
                     pass
                 except RuntimeError as e:
@@ -462,7 +468,7 @@ def executar(cfg: dict, arq_calib: Path, ctl, ui, forcar_calibracao: bool = Fals
                     previa_aberta = False
                 try:
                     modelo, calib_palp = fazer_calibracao()
-                    ajuste = None
+                    ajuste, pontos_mira = None, modelo.pontos
                 except Cancelado:
                     ui.notificar("Calibração cancelada", "Mantive a calibração anterior.")
                 palp, gestos, filtro, cong = novo_estado()

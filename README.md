@@ -80,6 +80,9 @@ no anel e o cursor volta na hora para onde você o deixou (com um botão do mous
 não clica). O anel fica amarelo no clique. Para o olhar mover o próprio cursor, desmarque
 *Ponteiro separado do mouse* no menu do ícone.
 
+**Várias telas.** A calibração, os alvos do F8 e o anel cobrem todas as telas, inclusive de tamanhos e
+posições diferentes. Mudou a disposição das telas? O programa calibra de novo ao abrir.
+
 **Zoom automático.** A câmera filma em 1280×720 e só o recorte em volta do rosto é analisado, o que
 dá mais pixels na íris sem precisar aproximar a câmera. O recorte segue o rosto e abre a imagem
 inteira se o perder. Para desligar: *Zoom da câmera › Desligado*.
@@ -99,7 +102,7 @@ ficam gravadas no `config.json`.
 | Tecla | Função |
 |---|---|
 | **F9** | pausa / retoma (funciona com qualquer janela em foco) |
-| **F8** | teste de mira: olhe para o alvo, veja onde o anel cai e aplique a correção |
+| **F8** | teste de mira em rodadas: olhe para os alvos e o programa recalibra a cada rodada até acertar (meta 70 px), parar de melhorar ou você apertar Esc |
 | **F10** | refaz a calibração |
 | **Esc** (na calibração) | cancela |
 
@@ -266,7 +269,7 @@ ajustes finos.
 .venv\Scripts\python -m unittest discover -s tests -t .
 ```
 
-São 85 testes, todos sem câmera nem celular: os gestos (sequências de piscadas sintéticas, incluindo
+São 89 testes, todos sem câmera nem celular: os gestos (sequências de piscadas sintéticas, incluindo
 piscadas normais, ruído de um quadro, olhos que não fecham juntos, olho fechado demais), as
 pálpebras (calibração por usuário, histerese, pico de reflexo), a geometria, a regressão, o
 filtro e o congelamento do cursor.
