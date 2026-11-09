@@ -99,6 +99,7 @@ ficam gravadas no `config.json`.
 | Tecla | Função |
 |---|---|
 | **F9** | pausa / retoma (funciona com qualquer janela em foco) |
+| **F8** | teste de mira: olhe para o alvo, veja onde o anel cai e aplique a correção |
 | **F10** | refaz a calibração |
 | **Esc** (na calibração) | cancela |
 
@@ -265,7 +266,7 @@ ajustes finos.
 .venv\Scripts\python -m unittest discover -s tests -t .
 ```
 
-São 76 testes, todos sem câmera nem celular: os gestos (sequências de piscadas sintéticas, incluindo
+São 85 testes, todos sem câmera nem celular: os gestos (sequências de piscadas sintéticas, incluindo
 piscadas normais, ruído de um quadro, olhos que não fecham juntos, olho fechado demais), as
 pálpebras (calibração por usuário, histerese, pico de reflexo), a geometria, a regressão, o
 filtro e o congelamento do cursor.

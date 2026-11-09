@@ -114,10 +114,14 @@ class ModeloOlhar:
     # além disso (em desvios-padrão da calibração) o olhar está fora da área calibrada:
     # cabeça virada, olhando para o teclado ou para fora da tela
     LIMITE_FORA = 3.5
+    # variação que sempre conta como normal (u, v, giro, inclinação), mesmo que a pessoa
+    # tenha ficado imóvel na calibração: a cabeça se mexe durante o uso
+    TOLERANCIA = np.array([0.20, 0.10, 0.30, 0.25])
 
     def afastamento(self, f: np.ndarray) -> float:
         """Quanto o vetor está fora do que foi visto na calibração (maior |z|)."""
-        z = (np.asarray(f, float) - self.media) / self.desvio
+        escala = np.maximum(self.desvio, self.TOLERANCIA / self.LIMITE_FORA)
+        z = (np.asarray(f, float) - self.media) / escala
         return float(np.abs(z).max())
 
     def fora(self, f: np.ndarray) -> bool:

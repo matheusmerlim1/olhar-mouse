@@ -83,6 +83,7 @@ class Detector:
         """zoom: objeto Zoom. remoto: CameraCelular (o recorte é feito no próprio celular)."""
         self.zoom, self.remoto = zoom, remoto
         self.ocupacao = 0.0       # largura do rosto / largura do quadro analisado
+        self.cabeca = np.array([0.5, 0.5, 0.2])   # centro x, y e largura do rosto na imagem INTEIRA
         # lê o modelo como bytes: o MediaPipe falha com acento no caminho
         # ("Informação") quando recebe o caminho do arquivo no Windows
         opcoes = vision.FaceLandmarkerOptions(
@@ -124,6 +125,9 @@ class Detector:
             return None  # modelo sem íris
         minimo, maximo = pts.min(axis=0), pts.max(axis=0)
         self.ocupacao = float((maximo[0] - minimo[0]) / w)
+        self.cabeca = np.array([usado[0] + usado[2] * (minimo[0] + maximo[0]) / (2 * w),
+                                usado[1] + usado[3] * (minimo[1] + maximo[1]) / (2 * h),
+                                usado[2] * self.ocupacao])
         self._atualizar_zoom((minimo[0] / w, minimo[1] / h, maximo[0] / w, maximo[1] / h), usado)
         pts[:, 0] += dx           # pontos no quadro inteiro (a prévia desenha nele)
         pts[:, 1] += dy

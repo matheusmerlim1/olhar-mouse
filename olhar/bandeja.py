@@ -63,6 +63,7 @@ class Controle:
     def __init__(self):
         self.pausado = False
         self.recalibrar = False
+        self.testar = False         # abrir o teste de mira
         self.mostrar_camera = False
         self.reiniciar = False      # config mudou (câmera, óculos, olho): reabre tudo
         self.escolher = False       # mostrar a tela das 3 opções de câmera
@@ -203,6 +204,9 @@ class Bandeja:
     def _escolher(self, *_):
         self.ctl.escolher = True
 
+    def _testar(self, *_):
+        self.ctl.testar = True
+
     def _recalibrar(self, *_):
         self.ctl.recalibrar = True
 
@@ -329,6 +333,7 @@ class Bandeja:
             M(lambda _: "Escolher câmera e começar…" if self.ctl.parado
               else ("Retomar (F9)" if self.ctl.pausado else "Pausar (F9)"), self._principal, default=True),
             M("Trocar de câmera…", self._escolher, visible=lambda _: not self.ctl.parado),
+            M("Testar e ajustar a mira (F8)", self._testar, visible=lambda _: not self.ctl.parado),
             M("Recalibrar (F10)", self._recalibrar),
             M("Mostrar a câmera", self._camera_janela, checked=lambda _: self.ctl.mostrar_camera),
             Sep,
