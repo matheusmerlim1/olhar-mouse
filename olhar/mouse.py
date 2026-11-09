@@ -94,7 +94,7 @@ else:  # pragma: no cover - só para rodar em Linux/macOS
     def tecla_apertada(vk: int) -> bool:
         return False
 
-VK_F8, VK_F9, VK_F10 = 0x77, 0x78, 0x79
+VK_ESC, VK_F8, VK_F9, VK_F10 = 0x1B, 0x77, 0x78, 0x79
 
 
 def prender(x: int, y: int, monitores) -> tuple[int, int]:

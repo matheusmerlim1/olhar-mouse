@@ -81,7 +81,8 @@ não clica). O anel fica amarelo no clique. Para o olhar mover o próprio cursor
 *Ponteiro separado do mouse* no menu do ícone.
 
 **Olhos ou nariz.** Dá para mirar só com os olhos, com a cabeça parada, ou apontando o nariz junto: a
-calibração mede os dois jeitos, e o F8 testa e mostra o erro de cada um.
+calibração mede os dois jeitos, e o F8 testa e mostra o erro de cada um. Círculo amarelo cheio: use os olhos.
+Círculo verde vazado com cruz: aponte o nariz.
 
 **Várias telas.** A calibração, os alvos do F8 e o anel cobrem todas as telas, inclusive de tamanhos e
 posições diferentes. Mudou a disposição das telas? O programa calibra de novo ao abrir.
@@ -107,6 +108,7 @@ ficam gravadas no `config.json`.
 | **F9** | pausa / retoma (funciona com qualquer janela em foco) |
 | **F8** | teste de mira em rodadas: olhe para os alvos e o programa recalibra a cada rodada até acertar (meta 70 px), parar de melhorar ou você apertar Esc |
 | **F10** | refaz a calibração |
+| **Esc** ou botão **Sair** (na calibração e no F8) | sai a qualquer momento; no F8, fica com a melhor rodada já concluída |
 | **Esc** (na calibração) | cancela |
 
 **Mostrar a câmera** (no menu) abre uma janela com os olhos detectados e duas barras com o quanto
@@ -272,7 +274,7 @@ ajustes finos.
 .venv\Scripts\python -m unittest discover -s tests -t .
 ```
 
-São 94 testes, todos sem câmera nem celular: os gestos (sequências de piscadas sintéticas, incluindo
+São 98 testes, todos sem câmera nem celular: os gestos (sequências de piscadas sintéticas, incluindo
 piscadas normais, ruído de um quadro, olhos que não fecham juntos, olho fechado demais), as
 pálpebras (calibração por usuário, histerese, pico de reflexo), a geometria, a regressão, o
 filtro e o congelamento do cursor.

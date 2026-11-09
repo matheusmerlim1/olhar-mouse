@@ -193,3 +193,75 @@ class TestTextoPertoDoPonto(unittest.TestCase):
         (_, y), = lugar_texto((2460, 1900), [200], self.TELA)
         self.assertLess(y, 1900)
 
+
+class TestSair(unittest.TestCase):
+    """Dá para sair a qualquer momento, com ou sem a janela em foco."""
+
+    def tela(self):
+        from olhar.calibracao import _Tela
+        with mock.patch.multiple(cv2, namedWindow=mock.DEFAULT, setWindowProperty=mock.DEFAULT, setMouseCallback=mock.DEFAULT):
+            return _Tela(1920, 1080)
+
+    def test_esc_sem_foco_tecla_e_botao(self):
+        from olhar import mouse
+        t = self.tela()
+        with mock.patch.object(mouse, "tecla_apertada", return_value=False):
+            self.assertFalse(t.quer_sair(255))
+            self.assertTrue(t.quer_sair(27))
+            x0, y0, x1, y1 = t.botao
+            t._ao_mouse(cv2.EVENT_LBUTTONUP, 5, 5)
+            self.assertFalse(t.quer_sair(255))             # clique fora do botão
+            t._ao_mouse(cv2.EVENT_LBUTTONUP, (x0 + x1) // 2, (y0 + y1) // 2)
+            self.assertTrue(t.quer_sair(255))
+        t2 = self.tela()
+        with mock.patch.object(mouse, "tecla_apertada", return_value=True):   # Esc lido do teclado do Windows
+            self.assertTrue(t2.quer_sair(255))
+
+    def test_sai_mesmo_com_a_camera_parada(self):
+        from olhar import calibracao, mouse
+
+        class SemImagem:
+            def read(self):
+                return False, None
+
+        t = self.tela()
+        with mock.patch.object(cv2, "waitKey", return_value=255), mock.patch.object(mouse, "tecla_apertada", return_value=True):
+            with self.assertRaises(calibracao.Cancelado):
+                calibracao._coletar(SemImagem(), None, t, 60.0, "x")
+            with self.assertRaises(calibracao.Cancelado):
+                calibracao._preparar(SemImagem(), None, t)
+
+    def test_esc_na_segunda_rodada_guarda_a_primeira(self):
+        rng = np.random.default_rng(0)
+        chamadas = {"n": 0}
+
+        def medir(*a):
+            chamadas["n"] += 1
+            if chamadas["n"] > 12:
+                raise mira.Cancelado
+            return TestRodadas.olhar(a[-3], rng) + rng.normal(0, 0.02, 4), cabecas(1, chamadas["n"])[0]
+
+        esperas = (mira.ESPERA_RODADA, mira.ESPERA_FINAL)
+        mira.ESPERA_RODADA = mira.ESPERA_FINAL = 0.0
+        try:
+            caso = TestRodadas()
+            with mock.patch.multiple(cv2, imshow=mock.DEFAULT, namedWindow=mock.DEFAULT, setWindowProperty=mock.DEFAULT,
+                                     setMouseCallback=mock.DEFAULT, destroyWindow=mock.DEFAULT,
+                                     waitKey=mock.Mock(return_value=255)), mock.patch.object(mira, "_medir_ponto", side_effect=medir):
+                r = mira.testar(None, None, (1920, 1080), caso.modelo_errado(rng), "ambos", None, lambda: None, None, [])
+        finally:
+            mira.ESPERA_RODADA, mira.ESPERA_FINAL = esperas
+        self.assertIsNotNone(r)
+        self.assertEqual(len(r[2]), 10)                     # a rodada completa ficou guardada
+
+
+class TestCirculos(unittest.TestCase):
+    def test_nariz_e_olhos_desenham_diferente(self):
+        from olhar.calibracao import desenhar_alvo
+        a, b = np.zeros((200, 200, 3), np.uint8), np.zeros((200, 200, 3), np.uint8)
+        desenhar_alvo(a, (100, 100), "olhos", 30)
+        desenhar_alvo(b, (100, 100), "nariz", 30)
+        self.assertTrue((a[100, 115] > 0).any())            # olhos: círculo cheio
+        self.assertFalse((b[115, 115] > 0).any())           # nariz: vazado entre a cruz e o aro
+        self.assertTrue((b[100, 60] > 0).any())             # a cruz passa do aro
+

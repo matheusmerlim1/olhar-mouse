@@ -51,6 +51,20 @@ def pontos_cabeca(w: int, h: int) -> list[tuple[int, int]]:
             ((0.5, 0.08), (0.5, 0.92), (0.08, 0.5), (0.92, 0.5), (0.5, 0.5))]
 
 
+def desenhar_alvo(img, ponto, modo: str, raio: int) -> None:
+    """Olhos: círculo amarelo cheio. Nariz: círculo verde vazado com uma cruz."""
+    raio = max(raio, 8)
+    if modo == "nariz":
+        verde = (90, 235, 90)
+        cv2.circle(img, ponto, raio, verde, 4, cv2.LINE_AA)
+        x, y = ponto
+        cv2.line(img, (x - raio - 8, y), (x + raio + 8, y), verde, 2, cv2.LINE_AA)
+        cv2.line(img, (x, y - raio - 8), (x, y + raio + 8), verde, 2, cv2.LINE_AA)
+    else:
+        cv2.circle(img, ponto, raio, (60, 200, 255), -1, cv2.LINE_AA)
+        cv2.circle(img, ponto, 3, (0, 0, 0), -1, cv2.LINE_AA)
+
+
 def lugar_texto(ponto, larguras, monitor, alt_linha=30, folga=52, margem=12):
     """Onde escrever as linhas (x, y da base de cada uma): colado ao ponto, por baixo dele,
     ou por cima se não couber, sem sair da tela. Texto longe faz o olho ir ler e voltar."""
@@ -75,11 +89,32 @@ class _Tela:
         cobre = ms and max(m[0] + m[2] for m in ms) == w and max(m[1] + m[3] for m in ms) == h
         self.monitores = ms if cobre else [(0, 0, w, h)]
         self.ativo = self.monitores[0]
+        mx, my, mw, _ = self.monitores[0]
+        self.botao = (mx + mw - 150, my + 12, mx + mw - 12, my + 52)   # "Sair" na tela principal
+        self.clicou_sair = False
         cv2.namedWindow(JANELA, cv2.WINDOW_NORMAL)
         if len(self.monitores) == 1:
             cv2.setWindowProperty(JANELA, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
         else:
             self._cobrir_todas()
+        try:
+            cv2.setMouseCallback(JANELA, self._ao_mouse)
+        except cv2.error:
+            pass
+
+    def _ao_mouse(self, evento, x, y, *_) -> None:
+        x0, y0, x1, y1 = self.botao
+        if evento == cv2.EVENT_LBUTTONUP and x0 <= x <= x1 and y0 <= y <= y1:
+            self.clicou_sair = True
+
+    def quer_sair(self, tecla: int = 255) -> bool:
+        """Esc (mesmo sem a janela em foco), Q ou clique no botão Sair."""
+        return tecla in (27, ord("q")) or self.clicou_sair or mouse.tecla_apertada(mouse.VK_ESC)
+
+    def botao_sair(self, img) -> None:
+        x0, y0, x1, y1 = self.botao
+        cv2.rectangle(img, (x0, y0), (x1, y1), (110, 110, 110), 1, cv2.LINE_AA)
+        cv2.putText(img, "Sair (Esc)", (x0 + 18, y0 + 27), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (170, 170, 170), 1, cv2.LINE_AA)
 
     def _cobrir_todas(self) -> None:
         import ctypes
@@ -114,7 +149,7 @@ class _Tela:
     def alt(self) -> int:
         return self.ativo[3]
 
-    def desenhar(self, texto: str = "", ponto=None, raio: int = 0, sub: str = "") -> int:
+    def desenhar(self, texto: str = "", ponto=None, raio: int = 0, sub: str = "", modo: str = "olhos") -> int:
         self.ativar(ponto)
         img = np.full((self.h, self.w, 3), 24, np.uint8)
         if ponto is not None:
@@ -125,10 +160,11 @@ class _Tela:
             if sub:
                 self._centralizado(img, sub, self.alt - 60, 0.7, (170, 170, 170))
         if ponto is not None:
-            cv2.circle(img, ponto, max(raio, 4), (60, 200, 255), -1, cv2.LINE_AA)
-            cv2.circle(img, ponto, 3, (0, 0, 0), -1, cv2.LINE_AA)
+            desenhar_alvo(img, ponto, modo, raio)
+        self.botao_sair(img)
         cv2.imshow(JANELA, img)
-        return cv2.waitKey(1) & 0xFF
+        k = cv2.waitKey(1) & 0xFF
+        return 27 if self.quer_sair(k) else k
 
     def perto(self, img, ponto, texto, escala=0.7, cor=(235, 235, 235)) -> None:
         """Texto curto colado ao ponto (\\n separa as linhas)."""
@@ -156,18 +192,20 @@ class Cancelado(Exception):
 
 
 def _coletar(cap, detector, tela: _Tela, dur: float, texto: str, sub: str = "",
-             ponto=None, raio_ini: int = 0, encolher: bool = False):
+             ponto=None, raio_ini: int = 0, encolher: bool = False, modo: str = "olhos"):
     """Lê quadros por `dur` segundos e devolve a lista de medidas com rosto."""
     medidas = []
     t0 = time.monotonic()
     while (t := time.monotonic() - t0) < dur:
         ok, frame = cap.read()
         if not ok:
+            if tela.quer_sair(cv2.waitKey(1) & 0xFF):   # câmera parada não impede de sair
+                raise Cancelado
             continue
         m = detector.processar(frame)
         raio = int(raio_ini * (1 - t / dur)) + 6 if encolher else raio_ini
         aviso = sub if m is not None else "Rosto nao encontrado"
-        if tela.desenhar(texto, ponto, raio, aviso) in (27, ord("q")):
+        if tela.desenhar(texto, ponto, raio, aviso, modo) in (27, ord("q")):
             raise Cancelado
         if m is not None:
             medidas.append(m)
@@ -188,6 +226,8 @@ def _preparar(cap, detector, tela: _Tela, firme: float = 1.5) -> None:
     while True:
         ok, frame = cap.read()
         if not ok:
+            if tela.quer_sair(cv2.waitKey(1) & 0xFF):
+                raise Cancelado
             continue
         m = detector.processar(frame)
         t = time.monotonic()
@@ -217,9 +257,10 @@ def _preparar(cap, detector, tela: _Tela, firme: float = 1.5) -> None:
             txt, cor = "Rosto encontrado! Fique assim...", (120, 230, 120)
         tela._centralizado(fundo, txt, y0 - 30, 0.9, cor)
         tela._centralizado(fundo, "Enter: comecar assim mesmo   -   Esc cancela", tela.alt - 40, 0.6, (170, 170, 170))
+        tela.botao_sair(fundo)
         cv2.imshow(JANELA, fundo)
         k = cv2.waitKey(1) & 0xFF
-        if k in (27, ord("q")):
+        if tela.quer_sair(k):
             raise Cancelado
         if m is not None and (k in (13, 32) or (desde is not None and t - desde >= firme)):
             return
@@ -267,12 +308,12 @@ def _uma_calibracao(cap, detector, tela: _Tela, usar_olho: str, n_pontos: int):
         grade = [(x + mx, y + my) for x, y in pontos_calibracao(mw, mh, por_tela)]
         olhos += [(p, 2.2 if i == 0 else 0.9) for i, p in enumerate(grade)]
         nariz += [((x + mx, y + my), 1.4) for x, y in pontos_cabeca(mw, mh)]
-    roteiro = [(p, f"Siga o ponto ({i}/{len(olhos)})", c) for i, (p, c) in enumerate(olhos, 1)]
-    roteiro += [(p, f"Aponte o NARIZ ({i}/{len(nariz)})", c) for i, (p, c) in enumerate(nariz, 1)]
+    roteiro = [(p, f"Siga o ponto ({i}/{len(olhos)})", c, "olhos") for i, (p, c) in enumerate(olhos, 1)]
+    roteiro += [(p, f"Aponte o NARIZ ({i}/{len(nariz)})", c, "nariz") for i, (p, c) in enumerate(nariz, 1)]
     medianas = []                  # um vetor por ponto: o F8 recalibra a partir deles
-    for p, txt, chegar in roteiro:
-        _coletar(cap, detector, tela, chegar, txt, "", p, 30, encolher=True)  # olho chegando
-        ms = _coletar(cap, detector, tela, 1.0, txt, "", p, 8)
+    for p, txt, chegar, modo in roteiro:
+        _coletar(cap, detector, tela, chegar, txt, "", p, 30, encolher=True, modo=modo)  # olho chegando
+        ms = _coletar(cap, detector, tela, 1.0, txt, "", p, 18 if modo == "nariz" else 8, modo=modo)
         deste_ponto = []
         for m in ms:
             if palp.fechamento(m.ear_e, "esq") > 0.5 or palp.fechamento(m.ear_d, "dir") > 0.5:

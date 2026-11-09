@@ -17,7 +17,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from .calibracao import JANELA, Cancelado, _Tela
+from .calibracao import JANELA, Cancelado, _Tela, desenhar_alvo
 from .modelo_olhar import ModeloOlhar
 from .olhos import vetor_olhar
 
@@ -180,11 +180,12 @@ def _medir_ponto(cap, detector, tela, modelo, olho, palp, suavizador, ajuste, al
                     cabecas.append(cab)
         img = np.full((tela.h, tela.w, 3), 24, np.uint8)
         tela.perto(img, alvo, texto)     # colado ao alvo: texto longe puxa o olhar
-        _alvo(img, alvo)
+        desenhar_alvo(img, alvo, "nariz" if "NARIZ" in texto else "olhos", 18)
+        tela.botao_sair(img)
         if anel is not None:
             _anel(img, anel)
         cv2.imshow(JANELA, img)
-        if (cv2.waitKey(1) & 0xFF) in (27, ord("q")):
+        if tela.quer_sair(cv2.waitKey(1) & 0xFF):
             raise Cancelado
     if len(vetores) < 5:
         return None
@@ -208,9 +209,10 @@ def _mostrar_rodada(tela, rodada, erro, melhor, medidos, fim, motivo, detalhe=""
         if detalhe:
             tela._centralizado(img, detalhe, 155, 0.8)
         tela._centralizado(img, "Enter ou Esc: fechar" if fim else "Esc: encerrar e ficar com a melhor", tela.alt - 40, 0.7, (200, 200, 200))
+        tela.botao_sair(img)
         cv2.imshow(JANELA, img)
         k = cv2.waitKey(30) & 0xFF
-        if k in (27, ord("q")):
+        if tela.quer_sair(k):
             return True
         if (fim and k in (13, 10)) or time.monotonic() >= limite:
             return False
