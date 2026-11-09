@@ -51,6 +51,21 @@ def pontos_cabeca(w: int, h: int) -> list[tuple[int, int]]:
             ((0.5, 0.08), (0.5, 0.92), (0.08, 0.5), (0.92, 0.5), (0.5, 0.5))]
 
 
+def lugar_texto(ponto, larguras, monitor, alt_linha=30, folga=52, margem=12):
+    """Onde escrever as linhas (x, y da base de cada uma): colado ao ponto, por baixo dele,
+    ou por cima se não couber, sem sair da tela. Texto longe faz o olho ir ler e voltar."""
+    mx, my, mw, mh = monitor
+    n = len(larguras)
+    y = ponto[1] + folga                                  # base da 1ª linha, abaixo do ponto
+    if y + (n - 1) * alt_linha > my + mh - margem:
+        y = ponto[1] - folga + 18 - (n - 1) * alt_linha   # não cabe: vai para cima
+    lugares = []
+    for i, larg in enumerate(larguras):
+        x = min(max(ponto[0] - larg // 2, mx + margem), mx + mw - margem - larg)
+        lugares.append((x, y + i * alt_linha))
+    return lugares
+
+
 class _Tela:
     """Janela sem borda sobre TODAS as telas. Textos vão para a tela do ponto atual (`ativo`)."""
 
@@ -102,15 +117,28 @@ class _Tela:
     def desenhar(self, texto: str = "", ponto=None, raio: int = 0, sub: str = "") -> int:
         self.ativar(ponto)
         img = np.full((self.h, self.w, 3), 24, np.uint8)
-        if texto:
-            self._centralizado(img, texto, self.alt // 2 - 60 if ponto else self.alt // 2, 1.0)
-        if sub:
-            self._centralizado(img, sub, self.alt - 60, 0.7, (170, 170, 170))
+        if ponto is not None:
+            self.perto(img, ponto, "\n".join(t for t in (texto, sub) if t))
+        else:
+            if texto:
+                self._centralizado(img, texto, self.alt // 2, 1.0)
+            if sub:
+                self._centralizado(img, sub, self.alt - 60, 0.7, (170, 170, 170))
         if ponto is not None:
             cv2.circle(img, ponto, max(raio, 4), (60, 200, 255), -1, cv2.LINE_AA)
             cv2.circle(img, ponto, 3, (0, 0, 0), -1, cv2.LINE_AA)
         cv2.imshow(JANELA, img)
         return cv2.waitKey(1) & 0xFF
+
+    def perto(self, img, ponto, texto, escala=0.7, cor=(235, 235, 235)) -> None:
+        """Texto curto colado ao ponto (\\n separa as linhas)."""
+        linhas = [l for l in texto.split("\n") if l]
+        if not linhas:
+            return
+        fonte = cv2.FONT_HERSHEY_SIMPLEX
+        larguras = [cv2.getTextSize(l, fonte, escala, 2)[0][0] for l in linhas]
+        for linha, lugar in zip(linhas, lugar_texto(ponto, larguras, self.ativo)):
+            cv2.putText(img, linha, lugar, fonte, escala, cor, 2, cv2.LINE_AA)
 
     def _centralizado(self, img, texto, y, escala, cor=(235, 235, 235)):
         """y é contado a partir do topo da tela ativa."""
@@ -138,7 +166,7 @@ def _coletar(cap, detector, tela: _Tela, dur: float, texto: str, sub: str = "",
             continue
         m = detector.processar(frame)
         raio = int(raio_ini * (1 - t / dur)) + 6 if encolher else raio_ini
-        aviso = sub if m is not None else "Rosto nao encontrado - fique de frente para a camera"
+        aviso = sub if m is not None else "Rosto nao encontrado"
         if tela.desenhar(texto, ponto, raio, aviso) in (27, ord("q")):
             raise Cancelado
         if m is not None:
@@ -219,11 +247,11 @@ def _uma_calibracao(cap, detector, tela: _Tela, usar_olho: str, n_pontos: int):
     _preparar(cap, detector, tela)
     tela.ativar(None)
     centro = (tela.ativo[0] + tela.larg // 2, tela.ativo[1] + tela.alt // 2)
-    _coletar(cap, detector, tela, 2.0, "Calibracao: sente como vai usar e olhe para o ponto",
-             "Esc cancela", centro, 14)
+    _coletar(cap, detector, tela, 2.0, "Sente como vai usar\ne olhe para o ponto",
+             "", centro, 14)
 
-    abertos = _coletar(cap, detector, tela, 2.0, "Olhos ABERTOS, olhando o ponto", "", centro, 14)
-    txt = "Agora FECHE os olhos e so abra quando ouvir o bipe"
+    abertos = _coletar(cap, detector, tela, 2.0, "Olhos ABERTOS\nolhe para o ponto", "", centro, 14)
+    txt = "FECHE os olhos\nabra ao ouvir o bipe"
     _coletar(cap, detector, tela, 1.5, txt, "", centro, 14)        # tempo para fechar
     fechados = _coletar(cap, detector, tela, 2.0, txt, "", centro, 14)
     bipe(990)
@@ -239,8 +267,8 @@ def _uma_calibracao(cap, detector, tela: _Tela, usar_olho: str, n_pontos: int):
         grade = [(x + mx, y + my) for x, y in pontos_calibracao(mw, mh, por_tela)]
         olhos += [(p, 2.2 if i == 0 else 0.9) for i, p in enumerate(grade)]
         nariz += [((x + mx, y + my), 1.4) for x, y in pontos_cabeca(mw, mh)]
-    roteiro = [(p, f"Siga o ponto com o olhar ({i}/{len(olhos)})", c) for i, (p, c) in enumerate(olhos, 1)]
-    roteiro += [(p, f"Agora aponte o NARIZ para o ponto ({i}/{len(nariz)})", c) for i, (p, c) in enumerate(nariz, 1)]
+    roteiro = [(p, f"Siga o ponto ({i}/{len(olhos)})", c) for i, (p, c) in enumerate(olhos, 1)]
+    roteiro += [(p, f"Aponte o NARIZ ({i}/{len(nariz)})", c) for i, (p, c) in enumerate(nariz, 1)]
     medianas = []                  # um vetor por ponto: o F8 recalibra a partir deles
     for p, txt, chegar in roteiro:
         _coletar(cap, detector, tela, chegar, txt, "", p, 30, encolher=True)  # olho chegando

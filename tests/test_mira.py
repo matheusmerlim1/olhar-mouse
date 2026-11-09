@@ -167,3 +167,29 @@ class TestFaixaDaCabeca(unittest.TestCase):
         virou = m.media.copy()
         virou[2] += 0.8                  # olhando para o lado de verdade
         self.assertTrue(m.fora(virou))
+
+
+class TestTextoPertoDoPonto(unittest.TestCase):
+    TELA = (1920, 0, 1080, 1920)
+
+    def test_fica_colado_ao_ponto_e_dentro_da_tela(self):
+        from olhar.calibracao import lugar_texto
+        for ponto in ((1985, 115), (2935, 115), (2460, 960), (1985, 1805), (2935, 1860)):
+            larguras = [320, 240]
+            for larg, (x, y) in zip(larguras, lugar_texto(ponto, larguras, self.TELA)):
+                self.assertGreaterEqual(x, self.TELA[0])
+                self.assertLessEqual(x + larg, self.TELA[0] + self.TELA[2])
+                self.assertLess(abs(y - ponto[1]), 100, ponto)
+                self.assertLess(abs(x - ponto[0]), 340, ponto)
+
+    def test_nao_cobre_o_ponto(self):
+        from olhar.calibracao import lugar_texto
+        for ponto in ((2460, 960), (2460, 1900)):
+            for _, y in lugar_texto(ponto, [200], self.TELA):
+                self.assertGreater(abs(y - ponto[1]), 30)
+
+    def test_no_fim_da_tela_vai_para_cima(self):
+        from olhar.calibracao import lugar_texto
+        (_, y), = lugar_texto((2460, 1900), [200], self.TELA)
+        self.assertLess(y, 1900)
+

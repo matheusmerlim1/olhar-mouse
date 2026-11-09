@@ -28,14 +28,14 @@ PACIENCIA = 2             # rodadas seguidas sem melhorar antes de parar
 ESPERA_RODADA = 2.5       # segundos mostrando o resultado de cada rodada
 ESPERA_FINAL = 12.0
 MAX_PONTOS = 150          # pontos guardados (calibração + rodadas mais recentes)
-SO_OLHOS = "So com os OLHOS: cabeca parada, olhe para o alvo"
-NARIZ = "Aponte o NARIZ para o alvo"
+SO_OLHOS = "So com os OLHOS\ncabeca parada"
+NARIZ = "Aponte o NARIZ"
 INSTRUCOES = (
-    "Mova a cabeca para a ESQUERDA e continue olhando o alvo",
-    "Mova a cabeca para a DIREITA e continue olhando o alvo",
-    "Chegue mais PERTO e continue olhando o alvo",
-    "Afaste-se um pouco e continue olhando o alvo",
-    "Levante o rosto e continue olhando o alvo",
+    "Cabeca para a ESQUERDA\nolhando o alvo",
+    "Cabeca para a DIREITA\nolhando o alvo",
+    "Chegue mais PERTO\nolhando o alvo",
+    "Afaste-se um pouco\nolhando o alvo",
+    "Levante o ROSTO\nolhando o alvo",
 )
 # variação mínima de cada medida da cabeça (x, y, tamanho, giro, inclinação): abaixo disso é
 # ruído, e dividir por ela amplificaria o ruído
@@ -179,9 +179,7 @@ def _medir_ponto(cap, detector, tela, modelo, olho, palp, suavizador, ajuste, al
                     vetores.append(v)
                     cabecas.append(cab)
         img = np.full((tela.h, tela.w, 3), 24, np.uint8)
-        tela._centralizado(img, texto, 60, 0.9)
-        tela._centralizado(img, "O anel mostra para onde o programa acha que voce olha  -  Esc encerra",
-                           tela.alt - 40, 0.6, (170, 170, 170))
+        tela.perto(img, alvo, texto)     # colado ao alvo: texto longe puxa o olhar
         _alvo(img, alvo)
         if anel is not None:
             _anel(img, anel)
