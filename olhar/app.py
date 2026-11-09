@@ -254,6 +254,8 @@ def executar(cfg: dict, arq_calib: Path, ctl, ui, forcar_calibracao: bool = Fals
         salvar(arq_calib, modelo, palp, {"tela": list(tela), "olho": olho, "oculos": cfg["oculos"],
                                          "camera": str(cfg["camera"])})
         print(f"Calibração salva (erro médio {modelo.erro_px:.0f} px).")
+        print(f"Modelo: {modelo.forma}, ridge {modelo.ridge}, desvio u/v/yaw/pitch {modelo.desvio.round(4).tolist()}, "
+              f"horizontal {modelo.coef[:, 0].round(0).tolist()}, vertical {modelo.coef[:, 1].round(0).tolist()}")
         return modelo, palp
 
     try:

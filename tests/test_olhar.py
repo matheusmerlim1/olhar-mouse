@@ -225,3 +225,54 @@ class TestForaDaCalibracao(unittest.TestCase):
     def test_previsao_nao_explode(self):
         longe = self.m.prever([0.5, -0.4, 1.3, 0.6])            # valores medidos com a cabeça virada
         self.assertLess(np.abs(longe - 960).max(), 3000)        # antes chegava a dezenas de milhares
+
+
+class TestVertical(unittest.TestCase):
+    """Olhar e cabeça para cima têm de subir o ponto, mesmo com a íris vertical fraca."""
+
+    def amostras(self, cabeca_na_calibracao, seed=2):
+        from olhar.calibracao import pontos_cabeca
+        rng = np.random.default_rng(seed)
+        w, h = 1920, 1080
+        feats, alvos = [], []
+        def adiciona(p, olho, cabeca):
+            for _ in range(20):
+                dx, dy = p[0] / w - 0.5, p[1] / h - 0.5
+                feats.append([-0.3 * dx * olho + rng.normal(0, 0.008), 0.05 * dy * olho + rng.normal(0, 0.008),
+                              -0.5 * dx * cabeca + rng.normal(0, 0.012), 0.56 + 0.6 * dy * cabeca + rng.normal(0, 0.012)])
+                alvos.append(p)
+        for p in pontos_calibracao(w, h, 13):
+            adiciona(p, 1.0, 0.0)
+        if cabeca_na_calibracao:
+            for p in pontos_cabeca(w, h):
+                adiciona(p, 0.3, 1.0)
+        return np.array(feats), np.array(alvos, float)
+
+    def test_cabeca_para_cima_sobe_o_ponto(self):
+        m = ModeloOlhar()
+        m.ajustar(*self.amostras(True))
+        centro = m.media.copy()
+        cima = centro.copy()
+        cima[3] -= 0.2                                   # levantar o rosto: pitch diminui
+        self.assertFalse(m.fora(cima))                   # continua dentro da área calibrada
+        self.assertLess(m.prever(cima)[1], m.prever(centro)[1] - 150)
+
+    def test_aprendizado_contrario_da_cabeca_e_descartado(self):
+        m = ModeloOlhar()
+        f, a = self.amostras(False)
+        f[:, 3] = 0.56 - 0.02 * (a[:, 1] / 1080 - 0.5) + np.random.default_rng(0).normal(0, 0.005, len(f))
+        m.ajustar(f, a)
+        self.assertEqual(m.coef[4, 1], 0.0)              # cabeça ao contrário da íris: fora
+
+    def test_eixos_nao_se_misturam(self):
+        m = ModeloOlhar()
+        m.ajustar(*self.amostras(True))
+        self.assertEqual(m.coef[2, 0], 0.0)              # íris vertical não move o X
+        self.assertEqual(m.coef[1, 1], 0.0)              # íris horizontal não move o Y
+
+    def test_calibracao_antiga_continua_valendo(self):
+        m = ModeloOlhar()
+        f, a = self.amostras(True)
+        m.ajustar(f, a, ridge=1.0, forma="quadratico")
+        m2 = ModeloOlhar.de_dict(m.para_dict())
+        np.testing.assert_allclose(m.prever(f[0]), m2.prever(f[0]))

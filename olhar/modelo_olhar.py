@@ -1,10 +1,9 @@
 """Regressão: vetor do olhar (íris + pose da cabeça) → ponto na tela.
 
-Ridge sobre características padronizadas. A forma do modelo (linear ou com termos de 2º
-grau) e a força da regularização são escolhidas NA CALIBRAÇÃO de cada pessoa, pelo erro em
-pontos deixados de fora (validação cruzada por ponto): com sinal fraco — rosto pequeno na
-imagem, íris com poucos pixels — o modelo simples treme bem menos; com sinal bom, o de
-2º grau acerta melhor os cantos.
+Ridge sobre características padronizadas, com cada eixo da tela calculado à parte
+(horizontal: íris u + giro da cabeça; vertical: íris v + inclinação). A força da
+regularização é escolhida NA CALIBRAÇÃO de cada pessoa, pelo erro em pontos deixados de
+fora. Calibrações antigas ("linear", "quadratico") continuam sendo lidas.
 """
 from __future__ import annotations
 
@@ -18,13 +17,36 @@ def _termos(f: np.ndarray, forma: str = "quadratico") -> np.ndarray:
     """f: (N, 4) = u, v, yaw, pitch → matriz de projeto."""
     u, v, yaw, pitch = f.T
     base = [np.ones_like(u), u, v, yaw, pitch]
-    if forma == "linear":
+    if forma in ("linear", "separado"):
         return np.column_stack(base)
     return np.column_stack(base + [u * u, v * v, u * v, yaw * pitch])
 
 
-FORMAS = ("linear", "quadratico")
+FORMAS = ("separado",)
 RIDGES = (0.01, 1.0, 10.0, 50.0, 200.0)
+
+
+def _resolver_separado(X: np.ndarray, y: np.ndarray, ridge: float) -> np.ndarray:
+    """Horizontal só com u e yaw; vertical só com v e pitch (colunas 1,3 e 2,4 de `_termos`).
+
+    Com sinal fraco, misturar os eixos só aprende ruído. A cabeça tem de agir no MESMO
+    sentido da íris (olhar e cabeça para cima sobem o ponto); se a calibração aprendeu o
+    contrário, é ruído de cabeça parada e o termo é descartado. Comparar com a íris, e não
+    com um sinal fixo, funciona também em câmera espelhada.
+    """
+    coef = np.zeros((X.shape[1], 2))
+    for eixo, iris, cabeca in ((0, 1, 3), (1, 2, 4)):
+        colunas = [0, iris, cabeca]
+        c = _resolver(X[:, colunas], y[:, eixo], ridge)
+        if c[1] * c[2] < 0:
+            colunas = [0, iris]
+            c = _resolver(X[:, colunas], y[:, eixo], ridge)
+        coef[colunas, eixo] = c
+    return coef
+
+
+def _ajustar_forma(X: np.ndarray, y: np.ndarray, ridge: float, forma: str) -> np.ndarray:
+    return _resolver_separado(X, y, ridge) if forma == "separado" else _resolver(X, y, ridge)
 
 
 def _resolver(X: np.ndarray, y: np.ndarray, ridge: float) -> np.ndarray:
@@ -63,7 +85,7 @@ class ModeloOlhar:
             forma, ridge, self.erro_cv_px = self._escolher(z, alvos, forma, ridge)
         self.forma, self.ridge = forma, ridge
         X = _termos(z, forma)
-        self.coef = _resolver(X, alvos, ridge)
+        self.coef = _ajustar_forma(X, alvos, ridge, forma)
         self.erro_px = float(np.linalg.norm(X @ self.coef - alvos, axis=1).mean())
         return self.erro_px
 
@@ -82,7 +104,7 @@ class ModeloOlhar:
                 erros = []
                 for g in range(len(pontos)):
                     treino, teste = grupo != g, grupo == g
-                    c = _resolver(X[treino], alvos[treino], r)
+                    c = _ajustar_forma(X[treino], alvos[treino], r, fm)
                     erros.append(np.linalg.norm(X[teste] @ c - alvos[teste], axis=1))
                 e = float(np.concatenate(erros).mean())
                 if melhor is None or e < melhor[2]:

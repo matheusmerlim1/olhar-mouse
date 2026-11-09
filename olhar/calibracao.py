@@ -44,6 +44,12 @@ def pontos_calibracao(w: int, h: int, n: int = 13) -> list[tuple[int, int]]:
     return [(int(x * w), int(y * h)) for x, y in pts]
 
 
+def pontos_cabeca(w: int, h: int) -> list[tuple[int, int]]:
+    """Cruz para a etapa em que a pessoa aponta o nariz (cima primeiro)."""
+    return [(int(x * w), int(y * h)) for x, y in
+            ((0.5, 0.08), (0.5, 0.92), (0.08, 0.5), (0.92, 0.5), (0.5, 0.5))]
+
+
 class _Tela:
     def __init__(self, w: int, h: int):
         self.w, self.h = w, h
@@ -176,9 +182,15 @@ def _uma_calibracao(cap, detector, tela: _Tela, usar_olho: str, n_pontos: int):
     palp = _calib_palpebra(abertos, fechados)
 
     alvos, feats = [], []
-    for i, p in enumerate(pontos_calibracao(w, h, n_pontos), 1):
-        txt = f"Siga o ponto com o olhar ({i}/{n_pontos})"
-        _coletar(cap, detector, tela, 0.9, txt, "", p, 30, encolher=True)  # olho chegando
+    # 1ª parte: só os olhos. 2ª parte: a cabeça. Sem ela o programa não aprende o movimento
+    # da cabeça, e levantar o rosto contava como "fora da área calibrada".
+    roteiro = [(p, f"Siga o ponto com o olhar ({i}/{n_pontos})", 0.9)
+               for i, p in enumerate(pontos_calibracao(w, h, n_pontos), 1)]
+    cruz = pontos_cabeca(w, h)
+    roteiro += [(p, f"Agora aponte o NARIZ para o ponto ({i}/{len(cruz)})", 1.4)
+                for i, p in enumerate(cruz, 1)]
+    for p, txt, chegar in roteiro:
+        _coletar(cap, detector, tela, chegar, txt, "", p, 30, encolher=True)  # olho chegando
         ms = _coletar(cap, detector, tela, 1.0, txt, "", p, 8)
         for m in ms:
             if palp.fechamento(m.ear_e, "esq") > 0.5 or palp.fechamento(m.ear_d, "dir") > 0.5:

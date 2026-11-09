@@ -68,8 +68,9 @@ do Python 3.12, `py -3.12`).
    preta e mostra a câmera até achar o seu rosto. Depois:
    - olhe para o ponto central com os olhos abertos;
    - feche os olhos quando pedir e só abra quando ouvir o bipe;
-   - siga com o olhar os 13 pontos que aparecem.
-   Mantenha a cabeça mais ou menos onde vai ficar durante o uso. Se o rosto sumir no meio, ele
+   - siga com o olhar os 13 pontos que aparecem;
+   - depois aponte o **nariz** para os 5 pontos finais (é o que ensina o movimento da cabeça).
+   Deixe a câmera parada onde vai ficar durante o uso. Se o rosto sumir no meio, ele
    avisa com um bipe grave e recomeça.
 3. Pronto: a tela volta ao normal e o cursor segue o olhar, em qualquer programa.
 
@@ -264,7 +265,7 @@ ajustes finos.
 .venv\Scripts\python -m unittest discover -s tests -t .
 ```
 
-São 72 testes, todos sem câmera nem celular: os gestos (sequências de piscadas sintéticas, incluindo
+São 76 testes, todos sem câmera nem celular: os gestos (sequências de piscadas sintéticas, incluindo
 piscadas normais, ruído de um quadro, olhos que não fecham juntos, olho fechado demais), as
 pálpebras (calibração por usuário, histerese, pico de reflexo), a geometria, a regressão, o
 filtro e o congelamento do cursor.
