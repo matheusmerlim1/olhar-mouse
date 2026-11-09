@@ -51,6 +51,7 @@ const destino = location.pathname.replace(/\\/$/, '') + '/quadro';
 const sessao = Math.random().toString(36).slice(2) + Date.now().toString(36);
 const QPS = 20;                                  // quadros por segundo (poupa o celular)
 let rodando = false, enviados = 0, t0 = performance.now();
+let recorte = [0, 0, 1, 1];                       // zoom: o PC diz qual parte da imagem quer
 const dormir = ms => new Promise(r => setTimeout(r, ms));
 function msg(t, c){ st.textContent = t; st.className = c || ''; }
 async function manterAcesa(){
@@ -67,7 +68,7 @@ async function iniciar(){
   if (!window.isSecureContext){ msg('A página não está em HTTPS: a câmera fica bloqueada.', 'erro'); return; }
   try {
     const s = await navigator.mediaDevices.getUserMedia({audio:false,
-      video:{facingMode:'user', width:{ideal:640}, height:{ideal:480}, frameRate:{ideal:QPS, max:30}}});
+      video:{facingMode:'user', width:{ideal:1280}, height:{ideal:720}, frameRate:{ideal:QPS, max:30}}});
     v.srcObject = s; await v.play();
   } catch(e){
     if (e.name === 'NotAllowedError'){ msg('Permita o uso da câmera e toque em “Usar câmera”.', 'erro'); return; }
@@ -86,14 +87,18 @@ async function enviar(){
     if (document.hidden){ await dormir(500); continue; }   // aba escondida não envia nada
     if (!v.videoWidth){ await dormir(100); continue; }
     const inicio = performance.now();
-    const k = Math.min(1, 640 / Math.max(v.videoWidth, v.videoHeight));
-    c.width = Math.round(v.videoWidth * k); c.height = Math.round(v.videoHeight * k);
-    ctx.drawImage(v, 0, 0, c.width, c.height);
+    const usado = recorte;
+    const sw = usado[2] * v.videoWidth, sh = usado[3] * v.videoHeight;
+    const k = Math.min(1, 640 / Math.max(sw, sh));
+    c.width = Math.round(sw * k); c.height = Math.round(sh * k);
+    ctx.drawImage(v, usado[0] * v.videoWidth, usado[1] * v.videoHeight, sw, sh, 0, 0, c.width, c.height);
     const b = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.7));
     try {
-      const r = await fetch(destino, {method:'POST', body:b, cache:'no-store', headers:{'X-Sessao': sessao}});
+      const r = await fetch(destino, {method:'POST', body:b, cache:'no-store', headers:{'X-Sessao': sessao, 'X-Recorte': usado.join(',')}});
       if (r.status === 409){ parar('Esta aba foi substituída por outra mais nova. Pode fechá-la.'); return; }
       if (!r.ok) throw new Error('HTTP ' + r.status);
+      const novo = (r.headers.get('X-Recorte') || '').split(',').map(Number);
+      if (novo.length === 4 && novo.every(n => isFinite(n)) && novo[2] > 0) recorte = novo;
       enviados++;
       const s = (performance.now() - t0) / 1000;
       if (s > 1){ msg('Enviando para o computador: ' + (enviados / s).toFixed(0) + ' quadros/s', 'ok'); enviados = 0; t0 = performance.now(); }
@@ -174,6 +179,15 @@ def _token(pasta: Path) -> str:
     return t
 
 
+def _ler_recorte(texto) -> tuple:
+    """Recorte informado pela página; página antiga (sem o cabeçalho) = imagem inteira."""
+    try:
+        x, y, l, a = (float(v) for v in str(texto).split(","))
+    except ValueError:
+        return (0.0, 0.0, 1.0, 1.0)
+    return (x, y, l, a) if 0 < l <= 1 and 0 < a <= 1 else (0.0, 0.0, 1.0, 1.0)
+
+
 class CameraCelular:
     """Imita o cv2.VideoCapture: `read()` devolve o quadro mais novo do celular."""
 
@@ -196,6 +210,9 @@ class CameraCelular:
         self._lido = 0       # último quadro entregue pelo read()
         self._cond = threading.Condition()
         self.ultimo_quadro_t = 0.0
+        self.recorte_pedido = (0.0, 0.0, 1.0, 1.0)     # o que o PC quer (vai na resposta)
+        self.recorte_do_quadro = (0.0, 0.0, 1.0, 1.0)  # com que recorte o último quadro veio
+        self._rec_recebido = self.recorte_do_quadro
         self._sessao = ""            # aba do celular que está valendo
         self._antigas: set[str] = set()
 
@@ -250,11 +267,13 @@ class CameraCelular:
                     self.end_headers()
                     return
                 with cam._cond:
+                    cam._rec_recebido = _ler_recorte(self.headers.get("X-Recorte"))
                     cam._jpeg = dados
                     cam._n += 1
                     cam.ultimo_quadro_t = time.monotonic()
                     cam._cond.notify_all()
                 self.send_response(204)
+                self.send_header("X-Recorte", ",".join(f"{v:.4f}" for v in cam.recorte_pedido))
                 self.end_headers()
 
         ultimo_erro = None
@@ -300,6 +319,7 @@ class CameraCelular:
             if self._n == self._lido or self._jpeg is None:
                 return False, None
             self._lido, jpeg = self._n, self._jpeg
+            self.recorte_do_quadro = self._rec_recebido
         img = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR)
         return (img is not None), img
 

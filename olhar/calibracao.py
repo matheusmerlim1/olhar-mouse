@@ -126,10 +126,10 @@ def _preparar(cap, detector, tela: _Tela, firme: float = 1.5) -> None:
         if m is None:
             desde = None
             txt, cor = "Rosto nao encontrado: fique de frente para a camera, com luz no rosto", (80, 80, 255)
-        elif np.ptp(m.pontos[:, 0]) < 0.28 * frame.shape[1]:
+        elif detector.ocupacao < 0.28:
             # rosto pequeno = íris com poucos pixels = cursor impreciso e tremido
             desde = None
-            txt, cor = "Rosto pequeno: aproxime a camera (o rosto deve ocupar ~1/3 da imagem)", (80, 200, 255)
+            txt, cor = "Rosto pequeno mesmo com zoom: aproxime a camera", (80, 200, 255)
         else:
             desde = desde or t
             txt, cor = "Rosto encontrado! Fique assim...", (120, 230, 120)

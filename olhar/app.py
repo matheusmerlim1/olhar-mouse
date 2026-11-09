@@ -23,6 +23,8 @@ from .filtro import ESTABILIDADE, Estabilizador, MedianaVetor, OneEuro2D
 from .gestos import ConfigGestos, Gestos, Palpebras
 from .modelo_olhar import carregar, salvar
 from .olhos import OLHO, vetor_olhar
+from .ponteiro import PonteiroOlhar
+from .zoom import Zoom
 
 RAIZ = Path(__file__).resolve().parent.parent
 PADRAO = {
@@ -36,6 +38,8 @@ PADRAO = {
     "som": True,
     "pontos_calibracao": 13,
     "gestos": {"lento_min": 0.30, "lento_max": 1.50, "janela": 1.50},
+    "ponteiro_separado": True, # anel próprio do olhar, sem tocar no cursor do Windows
+    "zoom": "auto",            # auto / off
     "estabilidade": "media",   # baixa / media / alta (menu "Estabilidade do cursor")
 }
 JANELA = "olhar-mouse - camera (Esc fecha, P pausa, C calibra)"
@@ -43,7 +47,7 @@ JANELA_QR = "Celular - olhar-mouse"
 
 
 ESCOLHAS_DO_MENU = ("camera", "olho", "oculos", "som", "mostrar_camera", "realce_contraste", "perguntar_camera",
-                    "estabilidade")
+                    "estabilidade", "ponteiro_separado", "zoom")
 
 
 def ler_config(caminho: Path, pessoal: Path | None = None) -> dict:
@@ -237,10 +241,14 @@ def executar(cfg: dict, arq_calib: Path, ctl, ui, forcar_calibracao: bool = Fals
     else:
         ui.definir_estado("carregando")
         cap = abrir_camera(cfg["camera"])
-    detector = Detector(RAIZ / "modelos" / "face_landmarker.task", realce=cfg["realce_contraste"])
+    zoom = Zoom(ligado=cfg.get("zoom", "auto") != "off")
+    detector = Detector(RAIZ / "modelos" / "face_landmarker.task", realce=cfg["realce_contraste"],
+                        zoom=zoom, remoto=cap if celular else None)
+    ponteiro = PonteiroOlhar()
     olho = cfg["olho"]
 
     def fazer_calibracao():
+        ponteiro.esconder()
         ui.definir_estado("calibrando")
         modelo, palp = calibrar(cap, detector, tela, olho, cfg["pontos_calibracao"])
         salvar(arq_calib, modelo, palp, {"tela": list(tela), "olho": olho, "oculos": cfg["oculos"],
@@ -284,6 +292,7 @@ def executar(cfg: dict, arq_calib: Path, ctl, ui, forcar_calibracao: bool = Fals
             if not ok:
                 if celular and not cap.conectado(3.0):
                     # celular desconectou (tela apagou, Wi-Fi caiu…): QR numa janela comum
+                    ponteiro.esconder()
                     ui.definir_estado("celular")
                     ui.notificar("Celular desconectado",
                                  "Ligue o cabo de novo." if adb else "Abra de novo a página no celular (o QR code está na tela).")
@@ -337,8 +346,10 @@ def executar(cfg: dict, arq_calib: Path, ctl, ui, forcar_calibracao: bool = Fals
 
                 # --- segundo mouse: se o cursor não está onde o olhar o deixou, foi o mouse
                 # físico. O olhar cede e não puxa de volta (só retoma num olhar novo).
+                # (no modo de ponteiro separado o olhar nunca toca no cursor: não há disputa)
+                separado = bool(cfg.get("ponteiro_separado", True))
                 real = mouse.posicao()
-                if colocado is not None and abs(real[0] - colocado[0]) + abs(real[1] - colocado[1]) > 6:
+                if not separado and colocado is not None and abs(real[0] - colocado[0]) + abs(real[1] - colocado[1]) > 6:
                     filtro.ceder()
                     colocado = None
                     fisico_t = t
@@ -352,11 +363,16 @@ def executar(cfg: dict, arq_calib: Path, ctl, ui, forcar_calibracao: bool = Fals
                             cong.registrar(t, x, y)
                             # só mexe no cursor quando o ponto MUDA: parado, o mouse físico fica livre
                             if (x, y) != colocado:
-                                mouse.mover(x, y)
+                                if not separado:
+                                    mouse.mover(x, y)
                                 colocado = (x, y)
-                    if clique and not fora:
-                        # clica onde o cursor está (mesmo que o mouse físico o tenha posto lá)
-                        mouse.clicar(clique)
+                    # com o botão do mouse de verdade apertado (arrastando), a piscada não clica
+                    if clique and not fora and not mouse.botao_fisico_apertado() and (colocado or not separado):
+                        if separado:         # clica no anel e devolve o cursor para onde estava
+                            ponteiro.marcar_clique()
+                            mouse.clicar_em(clique, *colocado)
+                        else:                # clica onde o cursor está
+                            mouse.clicar(clique)
                         msg, msg_t = f"CLIQUE {clique.upper()}", t
                         if cfg["som"]:
                             bipe(1200 if clique == "esquerdo" else 700, 60)
@@ -367,6 +383,12 @@ def executar(cfg: dict, arq_calib: Path, ctl, ui, forcar_calibracao: bool = Fals
                 status = ("PAUSADO (F9)" if ctl.pausado else "olhar fora da area calibrada" if fora
                           else "mouse fisico: olhe outro ponto" if filtro.cedido
                           else "parado (piscando)" if congelado else "seguindo o olhar")
+
+            perdeu = (sem_rosto_desde and t - sem_rosto_desde > 1.0) or (fora_desde and t - fora_desde > 1.0)
+            if cfg.get("ponteiro_separado", True) and colocado and not ctl.pausado and not perdeu:
+                ponteiro.mostrar(*colocado)
+            else:
+                ponteiro.esconder()
 
             if ctl.pausado:
                 ui.definir_estado("pausado")
@@ -400,6 +422,7 @@ def executar(cfg: dict, arq_calib: Path, ctl, ui, forcar_calibracao: bool = Fals
 
             if ctl.refiltrar:          # mudou a estabilidade no menu
                 ctl.refiltrar = False
+                zoom.ligado = cfg.get("zoom", "auto") != "off"
                 filtro = Suavizador(cfg.get("estabilidade", "media"))
 
             if ctl.recalibrar:
@@ -414,6 +437,7 @@ def executar(cfg: dict, arq_calib: Path, ctl, ui, forcar_calibracao: bool = Fals
                 palp, gestos, filtro, cong = novo_estado()
                 msg, evento_visto = "", ""
     finally:
+        ponteiro.fechar()
         cap.release()
         detector.fechar()
         if adb is not None:

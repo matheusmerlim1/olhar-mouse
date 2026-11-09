@@ -1,11 +1,11 @@
 # Olhar-mouse
 
-Controla o mouse do Windows com os olhos, usando a webcam do computador ou a câmera do
+Um segundo ponteiro controlado pelos olhos no Windows, usando a webcam do computador ou a câmera do
 celular. O cursor vai para onde você olha, e piscadas lentas viram cliques.
 
 | Gesto | Ação |
 |---|---|
-| Olhar para um ponto da tela | move o cursor |
+| Olhar para um ponto da tela | move o anel (segundo ponteiro) |
 | **2 piscadas lentas** com os dois olhos | **clique direito** |
 | **2 piscadelas lentas** (só um olho fecha, o outro fica aberto) | **clique esquerdo** |
 | Manter um olho fechado e piscar o outro **2 vezes devagar** | **clique esquerdo** |
@@ -73,12 +73,19 @@ do Python 3.12, `py -3.12`).
    avisa com um bipe grave e recomeça.
 3. Pronto: a tela volta ao normal e o cursor segue o olhar, em qualquer programa.
 
-**Funciona como um segundo mouse.** O mouse de verdade sempre funciona: se você mexer nele, o
-olhar não puxa o cursor de volta e só volta a mandar quando você olhar para outro lugar da tela.
-Olhando para um ponto, o cursor fica parado (não fica "tremendo"); a zona de repouso se ajusta
-sozinha ao tremido da sua câmera. Se a cabeça sair da posição da calibração (virada, olhando o
-teclado), o cursor fica parado e os cliques por piscada ficam desligados até você voltar.
-Os cliques por piscada caem onde o cursor estiver.
+**É um segundo ponteiro.** O olhar controla um **anel** desenhado por cima da tela, e o cursor do
+Windows continua só seu: o mouse de verdade nunca disputa com o olhar. Na piscada, o clique cai
+no anel e o cursor volta na hora para onde você o deixou (com um botão do mouse apertado, a piscada
+não clica). O anel fica amarelo no clique. Para o olhar mover o próprio cursor, desmarque
+*Ponteiro separado do mouse* no menu do ícone.
+
+**Zoom automático.** A câmera filma em 1280×720 e só o recorte em volta do rosto é analisado, o que
+dá mais pixels na íris sem precisar aproximar a câmera. O recorte segue o rosto e abre a imagem
+inteira se o perder. Para desligar: *Zoom da câmera › Desligado*.
+
+Olhando para um ponto, o anel fica parado; a zona de repouso se ajusta sozinha ao tremido da
+câmera. Se a cabeça sair da posição da calibração (virada, olhando o teclado), o anel some e os
+cliques por piscada ficam desligados até você voltar.
 
 Cor do ícone: **verde** seguindo o olhar · **cinza riscado** pausado ou parado · **azul-petróleo** mouse físico em
 uso · **âmbar** olhar fora da área calibrada · **vermelho** rosto não encontrado · **azul** esperando o celular · **roxo** calibrando · **laranja** carregando.
@@ -200,6 +207,8 @@ O clique sai 1,5 s depois da última piscada (é o tempo de saber se vem mais um
 | `realce_contraste` | `false` | contraste local (CLAHE), para pouca luz |
 | `mostrar_camera` | `false` | abrir já com a janela da câmera |
 | `perguntar_camera` | `true` | mostrar a escolha das 3 câmeras ao abrir |
+| `ponteiro_separado` | `true` | anel próprio do olhar; `false` move o cursor do Windows |
+| `zoom` | `"auto"` | `"auto"` recorta em volta do rosto; `"off"` usa a imagem inteira |
 | `som` | `true` | bipe no clique e na pausa |
 | `gestos.lento_min` / `lento_max` | `0.30` / `1.50` | duração (s) de uma piscada "lenta" |
 | `gestos.janela` | `1.50` | tempo máximo (s) entre as duas piscadas |
@@ -239,6 +248,8 @@ câmera ─► MediaPipe Face Landmarker (478 pontos, com íris)
 | `olhar/app.py` | laço principal |
 | `olhar/bandeja.py` | ícone na bandeja, menu, iniciar com o Windows, atalhos |
 | `olhar/escolha.py` | tela inicial com as 3 opções de câmera |
+| `olhar/ponteiro.py` | anel do olhar por cima da tela (segundo ponteiro) |
+| `olhar/zoom.py` | zoom automático em volta do rosto |
 | `olhar/atualizador.py` | procura e aplica versão nova ao abrir (git ou ZIP), protege `dados/` |
 | `olhar/novidades.py` | card "O que mudou" depois de uma atualização |
 | `modelos/face_landmarker.task` | modelo do Google MediaPipe (Apache 2.0) |
@@ -253,7 +264,7 @@ ajustes finos.
 .venv\Scripts\python -m unittest discover -s tests -t .
 ```
 
-São 64 testes, todos sem câmera nem celular: os gestos (sequências de piscadas sintéticas, incluindo
+São 72 testes, todos sem câmera nem celular: os gestos (sequências de piscadas sintéticas, incluindo
 piscadas normais, ruído de um quadro, olhos que não fecham juntos, olho fechado demais), as
 pálpebras (calibração por usuário, histerese, pico de reflexo), a geometria, a regressão, o
 filtro e o congelamento do cursor.

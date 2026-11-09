@@ -225,6 +225,13 @@ class Bandeja:
             self.ctl.refiltrar = True
         return acao
 
+    def _zoom(self, modo):
+        def acao(*_):
+            self.cfg["zoom"] = modo
+            self._salvar_cfg(self.cfg)
+            self.ctl.refiltrar = True
+        return acao
+
     def _alternar(self, chave, reinicia=True):
         def acao(*_):
             self.cfg[chave] = not self.cfg.get(chave)
@@ -342,6 +349,14 @@ class Bandeja:
                 M("Alta (mais firme)", self._estabilidade("alta"), radio=True,
                   checked=lambda _: self.cfg.get("estabilidade") == "alta"),
             )),
+            M("Zoom da câmera", pystray.Menu(
+                M("Automático", self._zoom("auto"), radio=True,
+                  checked=lambda _: self.cfg.get("zoom", "auto") != "off"),
+                M("Desligado", self._zoom("off"), radio=True,
+                  checked=lambda _: self.cfg.get("zoom", "auto") == "off"),
+            )),
+            M("Ponteiro separado do mouse", self._alternar("ponteiro_separado", reinicia=False),
+              checked=lambda _: bool(self.cfg.get("ponteiro_separado", True))),
             M("Uso óculos", self._alternar("oculos"), checked=lambda _: bool(self.cfg.get("oculos"))),
             M("Bipes", self._alternar("som", reinicia=False), checked=lambda _: bool(self.cfg.get("som"))),
             Sep,

@@ -29,7 +29,7 @@ def listar_cameras() -> list[str]:
         return []
 
 
-def abrir_camera(fonte, largura: int = 640, altura: int = 480) -> cv2.VideoCapture:
+def abrir_camera(fonte, largura: int = 1280, altura: int = 720) -> cv2.VideoCapture:
     """fonte: número da webcam (0, 1…), nome da câmera ou URL de câmera IP.
 
     Celular: apps como "IP Webcam" (Android) dão um endereço tipo
@@ -48,6 +48,8 @@ def abrir_camera(fonte, largura: int = 640, altura: int = 480) -> cv2.VideoCaptu
         cap = cv2.VideoCapture(fonte, cv2.CAP_DSHOW) if hasattr(cv2, "CAP_DSHOW") else cv2.VideoCapture(fonte)
         if not cap.isOpened():
             cap = cv2.VideoCapture(fonte)
+        # MJPG: em 720p o formato sem compressão derruba a taxa de quadros de muitas webcams
+        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, largura)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, altura)
         cap.set(cv2.CAP_PROP_FPS, 30)
@@ -77,7 +79,10 @@ class RealceOculos:
 
 
 class Detector:
-    def __init__(self, modelo: Path, realce: bool = False):
+    def __init__(self, modelo: Path, realce: bool = False, zoom=None, remoto=None):
+        """zoom: objeto Zoom. remoto: CameraCelular (o recorte é feito no próprio celular)."""
+        self.zoom, self.remoto = zoom, remoto
+        self.ocupacao = 0.0       # largura do rosto / largura do quadro analisado
         # lê o modelo como bytes: o MediaPipe falha com acento no caminho
         # ("Informação") quando recebe o caminho do arquivo no Windows
         opcoes = vision.FaceLandmarkerOptions(
@@ -94,6 +99,15 @@ class Detector:
         self._ult_ts = -1
 
     def processar(self, bgr: np.ndarray) -> Medida | None:
+        usado, dx, dy = (0.0, 0.0, 1.0, 1.0), 0, 0
+        if self.zoom is not None:
+            if self.remoto is not None:
+                usado = self.remoto.recorte_do_quadro
+            else:                 # webcam / câmera IP: recorta aqui
+                usado = self.zoom.recorte
+                H, W = bgr.shape[:2]
+                dx, dy = int(usado[0] * W), int(usado[1] * H)
+                bgr = bgr[dy:dy + max(2, int(usado[3] * H)), dx:dx + max(2, int(usado[2] * W))]
         if self._realce is not None:
             bgr = self._realce(bgr)
         rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
@@ -102,12 +116,26 @@ class Detector:
         self._ult_ts = ts
         res = self._lm.detect_for_video(mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb), ts)
         if not res.face_landmarks:
+            self._atualizar_zoom(None, usado)
             return None
         h, w = bgr.shape[:2]
         pts = np.array([(p.x * w, p.y * h) for p in res.face_landmarks[0]], dtype=float)
         if len(pts) < 478:
             return None  # modelo sem íris
+        minimo, maximo = pts.min(axis=0), pts.max(axis=0)
+        self.ocupacao = float((maximo[0] - minimo[0]) / w)
+        self._atualizar_zoom((minimo[0] / w, minimo[1] / h, maximo[0] / w, maximo[1] / h), usado)
+        pts[:, 0] += dx           # pontos no quadro inteiro (a prévia desenha nele)
+        pts[:, 1] += dy
         return medir(pts)
+
+    def _atualizar_zoom(self, caixa, usado) -> None:
+        if self.zoom is None:
+            return
+        if self.zoom.atualizar(caixa, usado, time.monotonic()):
+            print(f"Zoom: {self.zoom.fator:.1f}x")
+        if self.remoto is not None:
+            self.remoto.recorte_pedido = self.zoom.recorte
 
     def fechar(self):
         self._lm.close()

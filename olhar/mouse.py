@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import sys
+import time
 
 if sys.platform == "win32":
     import ctypes
@@ -65,3 +66,18 @@ else:  # pragma: no cover - só para rodar em Linux/macOS
         return False
 
 VK_F9, VK_F10 = 0x78, 0x79
+
+
+def botao_fisico_apertado() -> bool:
+    """Botão do mouse de verdade pressionado (arrastando algo)."""
+    return tecla_apertada(0x01) or tecla_apertada(0x02)
+
+
+def clicar_em(botao: str, x: int, y: int) -> None:
+    """Clica em (x, y) e devolve o cursor para onde a pessoa o deixou."""
+    original = posicao()
+    mover(x, y)
+    time.sleep(0.02)      # o programa alvo precisa ver o cursor chegar antes do clique
+    clicar(botao)
+    time.sleep(0.03)
+    mover(*original)
