@@ -19,10 +19,19 @@ def _termos(f: np.ndarray, forma: str = "quadratico") -> np.ndarray:
     base = [np.ones_like(u), u, v, yaw, pitch]
     if forma in ("linear", "separado"):
         return np.column_stack(base)
+    if forma == "modos":        # + íris×giro (virar o rosto "encurta" o olho) e giro²
+        return np.column_stack(base + [u * yaw, yaw * yaw])
     return np.column_stack(base + [u * u, v * v, u * v, yaw * pitch])
 
 
 FORMAS = ("separado",)
+# forma "modos": termos candidatos de cada eixo (colunas de `_termos`). Serve tanto para usar
+# só os olhos quanto para apontar o nariz; a calibração escolhe o que erra menos.
+# 1=u 2=v 3=giro 4=inclinação 5=u×giro 6=giro²
+CANDIDATOS = (
+    (1, 3, ((1,), (1, 3), (1, 3, 5), (1, 3, 5, 6))),   # horizontal: (íris, cabeça, conjuntos)
+    (2, 4, ((2,), (2, 4), (2, 4, 3), (2, 3))),         # vertical
+)
 RIDGES = (0.01, 1.0, 10.0, 50.0, 200.0)
 
 
@@ -43,6 +52,39 @@ def _resolver_separado(X: np.ndarray, y: np.ndarray, ridge: float) -> np.ndarray
             c = _resolver(X[:, colunas], y[:, eixo], ridge)
         coef[colunas, eixo] = c
     return coef
+
+
+def _ajustar_modos(z: np.ndarray, alvos: np.ndarray):
+    """Escolhe, por eixo, termos e regularização pelo erro em pontos deixados de fora."""
+    X = _termos(z, "modos")
+    pontos, grupo = np.unique(alvos, axis=0, return_inverse=True)
+    grupo = np.asarray(grupo).ravel()
+    coef, ridges, erro_total = np.zeros((X.shape[1], 2)), [], np.zeros(2)
+    for eixo, (iris, cabeca, conjuntos) in enumerate(CANDIDATOS):
+        y, melhor = alvos[:, eixo], None
+        for extra in conjuntos:
+            colunas = [0, *extra]
+            A = X[:, colunas]
+            c = _resolver(A, y, 1.0)
+            # a cabeça tem de agir no mesmo sentido da íris; o contrário é ruído
+            if cabeca in extra and c[colunas.index(iris)] * c[colunas.index(cabeca)] < 0:
+                continue
+            if len(pontos) < 4:
+                if melhor is None or len(extra) == 2:
+                    melhor = (0.0, colunas, 1.0)
+                continue
+            for r in RIDGES:
+                erros = []
+                for g in range(len(pontos)):
+                    treino, teste = grupo != g, grupo == g
+                    erros.append(np.abs(A[teste] @ _resolver(A[treino], y[treino], r) - y[teste]))
+                e = float(np.concatenate(erros).mean())
+                if melhor is None or e < melhor[0]:
+                    melhor = (e, colunas, r)
+        coef[melhor[1], eixo] = _resolver(X[:, melhor[1]], y, melhor[2])
+        ridges.append(melhor[2])
+        erro_total[eixo] = melhor[0]
+    return coef, ridges, float(np.hypot(*erro_total))
 
 
 def _ajustar_forma(X: np.ndarray, y: np.ndarray, ridge: float, forma: str) -> np.ndarray:
@@ -81,6 +123,11 @@ class ModeloOlhar:
         self.media = feats.mean(axis=0)
         self.desvio = feats.std(axis=0) + 1e-9
         z = (feats - self.media) / self.desvio
+        if forma is None and ridge is None:
+            self.forma = "modos"
+            self.coef, self.ridge, self.erro_cv_px = _ajustar_modos(z, alvos)
+            self.erro_px = float(np.linalg.norm(_termos(z, "modos") @ self.coef - alvos, axis=1).mean())
+            return self.erro_px
         if forma is None or ridge is None:
             forma, ridge, self.erro_cv_px = self._escolher(z, alvos, forma, ridge)
         self.forma, self.ridge = forma, ridge

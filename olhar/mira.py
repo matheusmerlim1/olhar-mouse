@@ -27,6 +27,9 @@ MAX_RODADAS = 6
 PACIENCIA = 2             # rodadas seguidas sem melhorar antes de parar
 ESPERA_RODADA = 2.5       # segundos mostrando o resultado de cada rodada
 ESPERA_FINAL = 12.0
+MAX_PONTOS = 150          # pontos guardados (calibração + rodadas mais recentes)
+SO_OLHOS = "So com os OLHOS: cabeca parada, olhe para o alvo"
+NARIZ = "Aponte o NARIZ para o alvo"
 INSTRUCOES = (
     "Mova a cabeca para a ESQUERDA e continue olhando o alvo",
     "Mova a cabeca para a DIREITA e continue olhando o alvo",
@@ -123,19 +126,24 @@ def vetor_cabeca(detector, m) -> np.ndarray:
 
 
 def pontos_rodada(monitores, rodada: int, rng) -> list[tuple]:
-    """Centro e cantos de cada tela, um pouco diferentes a cada rodada, 2 com a cabeça mexendo."""
+    """Centro e cantos de cada tela, um pouco diferentes a cada rodada.
+
+    Testa os dois jeitos de usar: 2 alvos só com os olhos, 2 apontando o nariz e 1 mexendo a
+    cabeça sem tirar os olhos dele; quem faz o quê muda a cada rodada.
+    """
     roteiro = []
     for n_tela, (mx, my, mw, mh) in enumerate(monitores):
         lugares = [(0.5, 0.5), (0.15, 0.15), (0.85, 0.15), (0.15, 0.85), (0.85, 0.85)]
-        mexer = {(rodada + n_tela) % 5, (rodada + n_tela + 2) % 5}
         for i, (fx, fy) in enumerate(lugares):
             alvo = (int(mx + mw * np.clip(fx + rng.uniform(-0.07, 0.07), 0.06, 0.94)),
                     int(my + mh * np.clip(fy + rng.uniform(-0.07, 0.07), 0.06, 0.94)))
-            if i in mexer:
-                roteiro.append((alvo, INSTRUCOES[(rodada + i + n_tela) % len(INSTRUCOES)], CHEGAR_MEXENDO))
-            else:
-                # 1º alvo de cada tela: tempo para virar o rosto até ela
-                roteiro.append((alvo, "Olhe para o alvo", CHEGAR_MEXENDO if i == 0 else CHEGAR))
+            papel = (i + rodada + n_tela) % 5
+            if papel == 0:
+                roteiro.append((alvo, INSTRUCOES[(rodada + n_tela) % len(INSTRUCOES)], CHEGAR_MEXENDO))
+            elif papel in (1, 2):
+                roteiro.append((alvo, NARIZ, CHEGAR_MEXENDO))
+            else:                # 1º alvo de cada tela: tempo para virar o rosto até ela
+                roteiro.append((alvo, SO_OLHOS, CHEGAR_MEXENDO if i == 0 else CHEGAR))
     return roteiro
 
 
@@ -185,7 +193,7 @@ def _medir_ponto(cap, detector, tela, modelo, olho, palp, suavizador, ajuste, al
     return np.median(vetores, axis=0), np.median(cabecas, axis=0)
 
 
-def _mostrar_rodada(tela, rodada, erro, melhor, medidos, fim, motivo) -> bool:
+def _mostrar_rodada(tela, rodada, erro, melhor, medidos, fim, motivo, detalhe="") -> bool:
     """Resultado da rodada: cada alvo ligado ao ponto em que o anel caiu. True = Esc."""
     tela.ativar(None)
     limite = time.monotonic() + (ESPERA_FINAL if fim else ESPERA_RODADA)
@@ -199,6 +207,8 @@ def _mostrar_rodada(tela, rodada, erro, melhor, medidos, fim, motivo) -> bool:
         tela._centralizado(img, f"Rodada {rodada}: erro {erro:.0f} px   -   melhor ate agora {melhor:.0f} px   -   meta {META_PX} px",
                            60, 1.0)
         tela._centralizado(img, motivo if fim else "Recalibrado. Proxima rodada ja usa o ajuste...", 110, 0.8, (120, 230, 120))
+        if detalhe:
+            tela._centralizado(img, detalhe, 155, 0.8)
         tela._centralizado(img, "Enter ou Esc: fechar" if fim else "Esc: encerrar e ficar com a melhor", tela.alt - 40, 0.7, (200, 200, 200))
         cv2.imshow(JANELA, img)
         k = cv2.waitKey(30) & 0xFF
@@ -209,7 +219,8 @@ def _mostrar_rodada(tela, rodada, erro, melhor, medidos, fim, motivo) -> bool:
 
 
 def testar(cap, detector, tela_wh, modelo, olho, palp, novo_suavizador, ajuste_atual, pontos_salvos=None):
-    """Roda as rodadas. Devolve (modelo, ajuste, pontos) da melhor versão, ou None se a atual já era a melhor."""
+    """Roda as rodadas. Devolve (modelo, ajuste, pontos): a melhor versão medida e tudo o que
+    foi medido (serve de base para o próximo F8). None se nenhuma rodada terminou."""
     w, h = tela_wh
     tela = _Tela(w, h)
     rng = np.random.default_rng()
@@ -222,11 +233,13 @@ def testar(cap, detector, tela_wh, modelo, olho, palp, novo_suavizador, ajuste_a
             roteiro = pontos_rodada(tela.monitores, rodada, rng)
             medidos = []
             try:
+                modos = []
                 for alvo, texto, chegar in roteiro:
                     r = _medir_ponto(cap, detector, tela, atual_m, olho, palp, novo_suavizador(), atual_a,
                                      alvo, texto, chegar)
                     if r is not None:
                         medidos.append((alvo, r[0], r[1]))
+                        modos.append(texto)
             except Cancelado:
                 break
             if len(medidos) < max(4, len(roteiro) // 2):
@@ -245,7 +258,14 @@ def testar(cap, detector, tela_wh, modelo, olho, palp, novo_suavizador, ajuste_a
                 melhor, sem_melhora = (erro, atual_m, atual_a), 0
             else:
                 sem_melhora += 1
-            print(f"Teste de mira, rodada {rodada}: {len(medidos)} pontos, erro {erro:.0f} px (melhor {melhor[0]:.0f} px)")
+            por_modo = []
+            for nome, marca in (("olhos", SO_OLHOS), ("nariz", NARIZ)):
+                es = [np.hypot(a[0] - p[0], a[1] - p[1]) for (a, p), t in zip(pontos, modos) if t == marca]
+                if es:
+                    por_modo.append(f"{nome}: {np.mean(es):.0f} px")
+            detalhe = "   -   ".join(por_modo)
+            print(f"Teste de mira, rodada {rodada}: {len(medidos)} pontos, erro {erro:.0f} px "
+                  f"(melhor {melhor[0]:.0f} px) {detalhe}")
 
             if erro <= META_PX:
                 motivo, fim = "Meta alcancada!", True
@@ -256,11 +276,12 @@ def testar(cap, detector, tela_wh, modelo, olho, palp, novo_suavizador, ajuste_a
             else:
                 motivo, fim = "", False
             conjunto += [{"v": np.asarray(v).tolist(), "alvo": list(a), "cab": np.asarray(c).tolist()} for a, v, c in medidos]
+            conjunto = conjunto[-MAX_PONTOS:]
             atual_m, atual_a = reajustar(conjunto)
-            if _mostrar_rodada(tela, rodada, erro, melhor[0], pontos, fim, motivo) or fim:
+            if _mostrar_rodada(tela, rodada, erro, melhor[0], pontos, fim, motivo, detalhe) or fim:
                 break
     finally:
         tela.fechar()
-    if melhor is None or (melhor[1] is modelo and melhor[2] is ajuste_atual):
+    if melhor is None:
         return None
     return melhor[1], melhor[2], conjunto

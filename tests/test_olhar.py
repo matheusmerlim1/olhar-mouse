@@ -276,3 +276,49 @@ class TestVertical(unittest.TestCase):
         m.ajustar(f, a, ridge=1.0, forma="quadratico")
         m2 = ModeloOlhar.de_dict(m.para_dict())
         np.testing.assert_allclose(m.prever(f[0]), m2.prever(f[0]))
+
+
+class TestOlhosENariz(unittest.TestCase):
+    """O mesmo modelo tem de servir só com os olhos e apontando o nariz."""
+
+    @staticmethod
+    def amostra(alvo, modo, rng):
+        dx, dy = alvo[0] / 1920 - 0.5, alvo[1] / 1080 - 0.5
+        if modo == "olhos":
+            yaw, pitch = rng.normal(0, 0.01), 0.56 + rng.normal(0, 0.01)
+            u, v = -0.3 * dx, 0.06 * dy
+        else:
+            yaw, pitch = -1.0 * dx, 0.56 + 0.2 * dy
+            u, v = -0.05 * dx, 0.01 * dy
+        # virar o rosto encurta o olho: a íris anda menos com a cabeça girada
+        ganho = 1 - 0.5 * abs(yaw)
+        return [u * ganho + rng.normal(0, 0.003), v + rng.normal(0, 0.002),
+                yaw + rng.normal(0, 0.01), pitch + rng.normal(0, 0.01)]
+
+    def test_acerta_nos_dois_modos(self):
+        rng = np.random.default_rng(4)
+        grade = [(x * 1920, y * 1080) for x in (0.1, 0.3, 0.5, 0.7, 0.9) for y in (0.1, 0.5, 0.9)]
+        f, a, modos = [], [], []
+        for p in grade:
+            for modo in ("olhos", "nariz"):
+                for _ in range(10):
+                    f.append(self.amostra(p, modo, rng))
+                    a.append(p)
+                    modos.append(modo)
+        m = ModeloOlhar()
+        m.ajustar(np.array(f), np.array(a, float))
+        self.assertEqual(m.forma, "modos")
+        for modo in ("olhos", "nariz"):
+            alvo = (1250, 400)
+            erro = np.mean([np.hypot(*(m.prever(self.amostra(alvo, modo, rng)) - alvo)) for _ in range(30)])
+            self.assertLess(erro, 200, modo)
+
+    def test_salva_e_le_o_modelo_novo(self):
+        rng = np.random.default_rng(5)
+        f = np.array([self.amostra((x, 500), "olhos", rng) for x in np.linspace(100, 1800, 60)])
+        a = np.column_stack([np.linspace(100, 1800, 60), np.full(60, 500.0)])
+        m = ModeloOlhar()
+        m.ajustar(f, a)
+        m2 = ModeloOlhar.de_dict(m.para_dict())
+        self.assertEqual(m2.forma, "modos")
+        np.testing.assert_allclose(m.prever(f[0]), m2.prever(f[0]))

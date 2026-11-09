@@ -80,6 +80,9 @@ no anel e o cursor volta na hora para onde você o deixou (com um botão do mous
 não clica). O anel fica amarelo no clique. Para o olhar mover o próprio cursor, desmarque
 *Ponteiro separado do mouse* no menu do ícone.
 
+**Olhos ou nariz.** Dá para mirar só com os olhos, com a cabeça parada, ou apontando o nariz junto: a
+calibração mede os dois jeitos, e o F8 testa e mostra o erro de cada um.
+
 **Várias telas.** A calibração, os alvos do F8 e o anel cobrem todas as telas, inclusive de tamanhos e
 posições diferentes. Mudou a disposição das telas? O programa calibra de novo ao abrir.
 
@@ -269,7 +272,7 @@ ajustes finos.
 .venv\Scripts\python -m unittest discover -s tests -t .
 ```
 
-São 89 testes, todos sem câmera nem celular: os gestos (sequências de piscadas sintéticas, incluindo
+São 91 testes, todos sem câmera nem celular: os gestos (sequências de piscadas sintéticas, incluindo
 piscadas normais, ruído de um quadro, olhos que não fecham juntos, olho fechado demais), as
 pálpebras (calibração por usuário, histerese, pico de reflexo), a geometria, a regressão, o
 filtro e o congelamento do cursor.

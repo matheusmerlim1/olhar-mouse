@@ -21,7 +21,7 @@ from .camera import Detector, abrir_camera
 from .celular import CameraCelular, aguardar_celular
 from .filtro import ESTABILIDADE, Estabilizador, MedianaVetor, OneEuro2D
 from .gestos import ConfigGestos, Gestos, Palpebras
-from .mira import AjusteCabeca, salvar_mira, testar as testar_mira, vetor_cabeca
+from .mira import AjusteCabeca, reajustar, salvar_mira, testar as testar_mira, vetor_cabeca
 from .modelo_olhar import carregar, salvar
 from .olhos import OLHO, vetor_olhar
 from .ponteiro import PonteiroOlhar
@@ -269,6 +269,11 @@ def executar(cfg: dict, arq_calib: Path, ctl, ui, forcar_calibracao: bool = Fals
             modelo, calib_palp, extra = carregar(arq_calib)
             ajuste = AjusteCabeca.de_dict(extra.get("ajuste"))
             pontos_mira = extra.get("pontos") or []
+            if modelo.forma != "modos" and len(pontos_mira) >= 10 and extra.get("tela") == list(tela):
+                # calibração feita antes do modelo que serve para olhos e nariz: reaproveita os pontos
+                modelo, ajuste = reajustar(pontos_mira)
+                salvar_mira(arq_calib, modelo, ajuste, pontos_mira)
+                print(f"Calibração atualizada para o novo modelo (erro em pontos de fora: {modelo.erro_cv_px:.0f} px).")
             # a calibração vale para uma câmera numa posição: trocar a câmera
             # (webcam ↔ celular), a tela, o olho ou os óculos exige calibrar de novo
             if (extra.get("tela") != list(tela) or extra.get("olho") != olho
@@ -451,9 +456,11 @@ def executar(cfg: dict, arq_calib: Path, ctl, ui, forcar_calibracao: bool = Fals
                     novo = testar_mira(cap, detector, tela, modelo, olho, calib_palp,
                                        lambda: Suavizador(cfg.get("estabilidade", "media")), ajuste, pontos_mira)
                     if novo is not None:
+                        mudou = novo[0] is not modelo
                         modelo, ajuste, pontos_mira = novo
                         salvar_mira(arq_calib, modelo, ajuste, pontos_mira)
-                        ui.notificar("Mira ajustada", "A melhor versão medida foi salva.")
+                        if mudou:
+                            ui.notificar("Mira ajustada", "A melhor versão medida foi salva.")
                 except Cancelado:
                     pass
                 except RuntimeError as e:
