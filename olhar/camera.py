@@ -29,6 +29,56 @@ def listar_cameras() -> list[str]:
         return []
 
 
+def indice_msmf(nomes: list[str], idx: int) -> int | None:
+    """Número da câmera no Media Foundation. Câmeras virtuais (OBS etc.) só existem no
+    DirectShow, então a ordem é a das câmeras reais."""
+    from .escolha import eh_virtual
+    if not 0 <= idx < len(nomes) or eh_virtual(nomes[idx]):
+        return None
+    return [n for n in nomes if not eh_virtual(n)].index(nomes[idx])
+
+
+def parecidas(a: np.ndarray, b: np.ndarray) -> bool:
+    """As duas imagens são da mesma câmera? (correlação das imagens reduzidas)"""
+    x = cv2.resize(cv2.cvtColor(a, cv2.COLOR_BGR2GRAY), (64, 36)).astype(float).ravel()
+    y = cv2.resize(cv2.cvtColor(b, cv2.COLOR_BGR2GRAY), (64, 36)).astype(float).ravel()
+    if x.std() < 1 or y.std() < 1:
+        return False
+    return float(np.corrcoef(x, y)[0, 1]) > 0.8
+
+
+def _ler_um(cap, tentativas: int = 15):
+    for _ in range(tentativas):
+        ok, f = cap.read()
+        if ok and f is not None:
+            return f
+    return None
+
+
+def _abrir_msmf(fonte: int, nomes: list[str], largura: int, altura: int):
+    """Webcam pelo Media Foundation: na DV20 dá 30 quadros/s, contra 12 no DirectShow.
+    Só usa se a imagem bater com a da câmera escolhida (a numeração dos dois pode diferir)."""
+    k = indice_msmf(nomes, fonte)
+    if k is None or not hasattr(cv2, "CAP_MSMF"):
+        return None
+    ds = cv2.VideoCapture(fonte, cv2.CAP_DSHOW)
+    ref = _ler_um(ds) if ds.isOpened() else None
+    ds.release()
+    if ref is None:
+        return None
+    ms = cv2.VideoCapture(k, cv2.CAP_MSMF)
+    if not ms.isOpened():
+        return None
+    ms.set(cv2.CAP_PROP_FRAME_WIDTH, largura)
+    ms.set(cv2.CAP_PROP_FRAME_HEIGHT, altura)
+    ms.set(cv2.CAP_PROP_FPS, 30)
+    f = _ler_um(ms)
+    if f is None or not parecidas(ref, f):
+        ms.release()
+        return None
+    return ms
+
+
 def abrir_camera(fonte, largura: int = 1280, altura: int = 720) -> cv2.VideoCapture:
     """fonte: número da webcam (0, 1…), nome da câmera ou URL de câmera IP.
 
@@ -36,15 +86,19 @@ def abrir_camera(fonte, largura: int = 1280, altura: int = 720) -> cv2.VideoCapt
     http://192.168.0.10:8080/video; o modo "Webcam" do Android 14+ (pelo cabo
     USB) e o DroidCam aparecem como câmeras com nome.
     """
+    nomes = listar_cameras()
     if isinstance(fonte, str) and fonte.strip().isdigit():
         fonte = int(fonte)
     elif isinstance(fonte, str) and "://" not in fonte:
-        nomes = listar_cameras()
         if fonte not in nomes:
             raise RuntimeError(f'A câmera "{fonte}" não está conectada. Câmeras encontradas: '
                                + (", ".join(nomes) or "nenhuma"))
         fonte = nomes.index(fonte)
     if isinstance(fonte, int):
+        cap = _abrir_msmf(fonte, nomes, largura, altura)
+        if cap is not None:
+            print("Câmera aberta pelo Media Foundation (mais quadros por segundo).")
+            return cap
         cap = cv2.VideoCapture(fonte, cv2.CAP_DSHOW) if hasattr(cv2, "CAP_DSHOW") else cv2.VideoCapture(fonte)
         if not cap.isOpened():
             cap = cv2.VideoCapture(fonte)
