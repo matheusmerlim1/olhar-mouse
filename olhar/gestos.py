@@ -41,6 +41,13 @@ class CalibPalpebra:
         return (a - ear) / faixa
 
 
+def olho_fechado_na_coleta(calib: CalibPalpebra, ear_e: float, ear_d: float) -> bool:
+    """Piscada de verdade durante a coleta de um ponto. Olhando para baixo ou bem para o
+    lado a pálpebra abaixa sozinha: com o limite antigo (meio fechado) esses quadros eram
+    jogados fora e pontos inteiros da calibração se perdiam."""
+    return (calib.fechamento(ear_e, "esq") + calib.fechamento(ear_d, "dir")) / 2 > 0.75
+
+
 class Palpebras:
     def __init__(self, calib: CalibPalpebra, janela_mediana: int = 3,
                  limiar_fecha: float = 0.6, limiar_abre: float = 0.4):

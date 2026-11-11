@@ -17,7 +17,7 @@ import cv2
 import numpy as np
 
 from . import mouse
-from .gestos import CalibPalpebra
+from .gestos import CalibPalpebra, olho_fechado_na_coleta
 from .modelo_olhar import ModeloOlhar
 from .olhos import OLHO, vetor_olhar
 
@@ -187,6 +187,9 @@ class _Tela:
         cv2.destroyWindow(JANELA)
 
 
+AMOSTRAS_POR_PONTO = 8
+
+
 class Cancelado(Exception):
     pass
 
@@ -311,24 +314,32 @@ def _uma_calibracao(cap, detector, tela: _Tela, usar_olho: str, n_pontos: int):
     roteiro = [(p, f"Siga o ponto ({i}/{len(olhos)})", c, "olhos") for i, (p, c) in enumerate(olhos, 1)]
     roteiro += [(p, f"Aponte o NARIZ ({i}/{len(nariz)})", c, "nariz") for i, (p, c) in enumerate(nariz, 1)]
     medianas = []                  # um vetor por ponto: o F8 recalibra a partir deles
+    perdidos = []
     for p, txt, chegar, modo in roteiro:
         _coletar(cap, detector, tela, chegar, txt, "", p, 30, encolher=True, modo=modo)  # olho chegando
-        ms = _coletar(cap, detector, tela, 1.0, txt, "", p, 18 if modo == "nariz" else 8, modo=modo)
-        deste_ponto = []
-        for m in ms:
-            if palp.fechamento(m.ear_e, "esq") > 0.5 or palp.fechamento(m.ear_d, "dir") > 0.5:
-                continue  # piscou durante a coleta
-            deste_ponto.append(vetor_olhar(m, usar_olho))
-            feats.append(deste_ponto[-1])
-            alvos.append(p)
+        # coleta até ter amostras suficientes (câmera lenta ou piscadas não fazem o ponto sumir)
+        deste_ponto, gasto = [], 0.0
+        while gasto < 1.0 or (len(deste_ponto) < AMOSTRAS_POR_PONTO and gasto < 2.5):
+            ms = _coletar(cap, detector, tela, 0.5, txt, "", p, 18 if modo == "nariz" else 8, modo=modo)
+            gasto += 0.5
+            for m in ms:
+                if olho_fechado_na_coleta(palp, m.ear_e, m.ear_d):
+                    continue  # piscou durante a coleta
+                deste_ponto.append(vetor_olhar(m, usar_olho))
+                feats.append(deste_ponto[-1])
+                alvos.append(p)
         if len(deste_ponto) >= 5:
             medianas.append({"v": np.median(deste_ponto, axis=0).tolist(), "alvo": list(p)})
+        else:
+            perdidos.append(p)
     if len(feats) < 3 * len(roteiro):
         raise _Falhou("Perdi seu rosto durante os pontos (luz fraca ou rosto fora da camera)")
     modelo = ModeloOlhar()
     erro = modelo.ajustar(np.array(feats), np.array(alvos, float))
     modelo.pontos = medianas
-    tela.desenhar(f"Pronto! Erro medio: {erro:.0f} px", None, 0, "comecando...")
+    print(f"Calibração: {len(medianas)} de {len(roteiro)} pontos aproveitados" + (f"; perdidos: {perdidos}" if perdidos else ""))
+    aviso = f"{len(perdidos)} ponto(s) perdido(s) - se a mira ficar ruim, recalibre" if perdidos else "comecando..."
+    tela.desenhar(f"Pronto! Erro medio: {erro:.0f} px", None, 0, aviso)
     cv2.waitKey(900)
     return modelo, palp
 

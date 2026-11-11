@@ -274,7 +274,7 @@ ajustes finos.
 .venv\Scripts\python -m unittest discover -s tests -t .
 ```
 
-São 98 testes, todos sem câmera nem celular: os gestos (sequências de piscadas sintéticas, incluindo
+São 101 testes, todos sem câmera nem celular: os gestos (sequências de piscadas sintéticas, incluindo
 piscadas normais, ruído de um quadro, olhos que não fecham juntos, olho fechado demais), as
 pálpebras (calibração por usuário, histerese, pico de reflexo), a geometria, a regressão, o
 filtro e o congelamento do cursor.

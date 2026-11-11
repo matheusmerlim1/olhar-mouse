@@ -162,5 +162,34 @@ class TestPalpebras(unittest.TestCase):
             self.assertFalse(p.fechado["esq"])
 
 
+class TestColeta(unittest.TestCase):
+    def test_olhar_para_baixo_nao_conta_como_piscada(self):
+        from olhar.gestos import olho_fechado_na_coleta
+        cal = CalibPalpebra(aberto_e=0.30, fechado_e=0.10, aberto_d=0.30, fechado_d=0.10)
+        self.assertFalse(olho_fechado_na_coleta(cal, 0.17, 0.18))     # pálpebra baixa: olhando para baixo
+        self.assertFalse(olho_fechado_na_coleta(cal, 0.12, 0.30))     # um olho apertado olhando de lado
+        self.assertTrue(olho_fechado_na_coleta(cal, 0.11, 0.12))      # piscada de verdade
+
+
+class TestMediaFoundation(unittest.TestCase):
+    def test_numero_da_camera(self):
+        from olhar.camera import indice_msmf
+        nomes = ["DV20 USB CAMERA", "OBS Virtual Camera"]
+        self.assertEqual(indice_msmf(nomes, 0), 0)
+        self.assertIsNone(indice_msmf(nomes, 1))                      # virtual: só DirectShow
+        self.assertEqual(indice_msmf(["OBS Virtual Camera", "HD Webcam", "Logi C920"], 2), 1)
+        self.assertIsNone(indice_msmf(nomes, 5))
+
+    def test_imagens_da_mesma_camera(self):
+        import numpy as np
+        from olhar.camera import parecidas
+        rng = np.random.default_rng(0)
+        a = (rng.random((72, 128, 3)) * 255).astype("uint8")
+        b = np.clip(a.astype(int) + 20, 0, 255).astype("uint8")       # mesma cena, outra exposição
+        self.assertTrue(parecidas(a, b))
+        self.assertFalse(parecidas(a, (rng.random((72, 128, 3)) * 255).astype("uint8")))
+        self.assertFalse(parecidas(a, np.zeros_like(a)))              # câmera preta
+
+
 if __name__ == "__main__":
     unittest.main()

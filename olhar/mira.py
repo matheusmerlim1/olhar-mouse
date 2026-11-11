@@ -18,6 +18,7 @@ import cv2
 import numpy as np
 
 from .calibracao import JANELA, Cancelado, _Tela, desenhar_alvo
+from .gestos import olho_fechado_na_coleta
 from .modelo_olhar import ModeloOlhar
 from .olhos import vetor_olhar
 
@@ -163,7 +164,8 @@ def _medir_ponto(cap, detector, tela, modelo, olho, palp, suavizador, ajuste, al
     t0 = time.monotonic()
     anel = None
     tela.ativar(alvo)
-    while (t := time.monotonic() - t0) < chegar + MEDIR:
+    # mede ao menos MEDIR s; se faltarem amostras (piscadas, câmera lenta), espera até 1,5 s a mais
+    while (t := time.monotonic() - t0) < chegar + MEDIR or (len(vetores) < 8 and t < chegar + MEDIR + 1.5):
         ok, frame = cap.read()
         if ok:
             m = detector.processar(frame)
@@ -174,7 +176,7 @@ def _medir_ponto(cap, detector, tela, modelo, olho, palp, suavizador, ajuste, al
                 a = suavizador(v, modelo, time.monotonic(), corr)
                 if a is not None:
                     anel = (int(np.clip(a[0], 0, tela.w - 1)), int(np.clip(a[1], 0, tela.h - 1)))
-                piscou = palp.fechamento(m.ear_e, "esq") > 0.5 or palp.fechamento(m.ear_d, "dir") > 0.5
+                piscou = olho_fechado_na_coleta(palp, m.ear_e, m.ear_d)
                 if t >= chegar and not piscou:
                     vetores.append(v)
                     cabecas.append(cab)
