@@ -363,6 +363,8 @@ class Bandeja:
             M("Ponteiro separado do mouse", self._alternar("ponteiro_separado", reinicia=False),
               checked=lambda _: bool(self.cfg.get("ponteiro_separado", True))),
             M("Uso óculos", self._alternar("oculos"), checked=lambda _: bool(self.cfg.get("oculos"))),
+            M("Clique por piscada", self._alternar("clique_piscada", reinicia=False),
+              checked=lambda _: bool(self.cfg.get("clique_piscada", True))),
             M("Bipes", self._alternar("som", reinicia=False), checked=lambda _: bool(self.cfg.get("som"))),
             Sep,
             M("Iniciar com o Windows", self._inicio, checked=lambda _: inicia_com_windows()),

@@ -40,6 +40,7 @@ PADRAO = {
     "pontos_calibracao": 13,
     "gestos": {"lento_min": 0.30, "lento_max": 2.50, "janela": 1.50},
     "ponteiro_separado": True, # anel próprio do olhar, sem tocar no cursor do Windows
+    "clique_piscada": True,    # cliques por piscada (menu "Clique por piscada")
     "zoom": "auto",            # auto / off
     "estabilidade": "media",   # baixa / media / alta (menu "Estabilidade do cursor")
 }
@@ -48,7 +49,7 @@ JANELA_QR = "Celular - olhar-mouse"
 
 
 ESCOLHAS_DO_MENU = ("camera", "olho", "oculos", "som", "mostrar_camera", "realce_contraste", "perguntar_camera",
-                    "estabilidade", "ponteiro_separado", "zoom")
+                    "estabilidade", "ponteiro_separado", "zoom", "clique_piscada")
 
 
 def ler_config(caminho: Path, pessoal: Path | None = None) -> dict:
@@ -356,7 +357,9 @@ def executar(cfg: dict, arq_calib: Path, ctl, ui, forcar_calibracao: bool = Fals
             fora = False
             if m is None:
                 sem_rosto_desde = sem_rosto_desde or t
-                gestos.atualizar(t, False, False)
+                # o rosto some por instantes durante a piscada: não conta isso como olho aberto
+                if not (gestos.fechando and t - sem_rosto_desde < 0.8):
+                    gestos.atualizar(t, False, False)
                 status = "SEM ROSTO"
             else:
                 sem_rosto_desde = None
@@ -398,7 +401,8 @@ def executar(cfg: dict, arq_calib: Path, ctl, ui, forcar_calibracao: bool = Fals
                                     mouse.mover(x, y)
                                 colocado = (x, y)
                     # com o botão do mouse de verdade apertado (arrastando), a piscada não clica
-                    if clique and not fora and not mouse.botao_fisico_apertado() and (colocado or not separado):
+                    if (clique and cfg.get("clique_piscada", True) and not fora
+                            and not mouse.botao_fisico_apertado() and (colocado or not separado)):
                         if separado:         # clica no anel e devolve o cursor para onde estava
                             ponteiro.marcar_clique()
                             mouse.clicar_em(clique, *colocado)

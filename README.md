@@ -106,6 +106,7 @@ ficam gravadas no `config.json`.
 | Tecla | Função |
 |---|---|
 | **F9** | pausa / retoma (funciona com qualquer janela em foco) |
+| menu › **Clique por piscada** | liga/desliga só os cliques por piscada (o anel continua) |
 | **F8** | teste de mira em rodadas: olhe para os alvos e o programa recalibra a cada rodada até acertar (meta 70 px), parar de melhorar ou você apertar Esc |
 | **F10** | refaz a calibração |
 | **Esc** ou botão **Sair** (na calibração e no F8) | sai a qualquer momento; no F8, fica com a melhor rodada já concluída |
@@ -274,7 +275,7 @@ ajustes finos.
 .venv\Scripts\python -m unittest discover -s tests -t .
 ```
 
-São 107 testes, todos sem câmera nem celular: os gestos (sequências de piscadas sintéticas, incluindo
+São 109 testes, todos sem câmera nem celular: os gestos (sequências de piscadas sintéticas, incluindo
 piscadas normais, ruído de um quadro, olhos que não fecham juntos, olho fechado demais), as
 pálpebras (calibração por usuário, histerese, pico de reflexo), a geometria, a regressão, o
 filtro e o congelamento do cursor.

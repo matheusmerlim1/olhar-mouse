@@ -147,11 +147,13 @@ class TestPalpebras(unittest.TestCase):
     def test_histerese(self):
         cal = CalibPalpebra(0.30, 0.10, 0.30, 0.10)
         p = Palpebras(cal, janela_mediana=1)
-        p.atualizar(0.16, 0.16)  # 70 % fechado → fecha
+        p.atualizar(0.14, 0.14)  # 80 %: olhando para baixo, NÃO fecha
+        self.assertFalse(p.fechado["esq"])
+        p.atualizar(0.11, 0.11)  # 95 % → fecha
         self.assertTrue(p.fechado["esq"])
-        p.atualizar(0.20, 0.20)  # 50 %: ainda dentro da histerese, continua fechado
+        p.atualizar(0.18, 0.18)  # 60 %: ainda dentro da histerese, continua fechado
         self.assertTrue(p.fechado["esq"])
-        p.atualizar(0.24, 0.24)  # 30 % → abre
+        p.atualizar(0.22, 0.22)  # 40 % → abre
         self.assertFalse(p.fechado["esq"])
 
     def test_mediana_tira_pico_de_reflexo(self):
@@ -202,13 +204,44 @@ class TestPiscadasMedidas(unittest.TestCase):
     def test_um_olho_fecha_mais_que_o_outro_conta_como_os_dois(self):
         cal = CalibPalpebra(aberto_e=0.178, fechado_e=0.074, aberto_d=0.175, fechado_d=0.098)
         p = Palpebras(cal, janela_mediana=1)
-        self.assertEqual(p.atualizar(0.120, 0.100), (True, True))     # esq meio caminho, dir fechado
+        self.assertEqual(p.atualizar(0.095, 0.100), (True, True))     # esq 80 %, dir 97 %: os dois
         p2 = Palpebras(cal, janela_mediana=1)
         self.assertEqual(p2.atualizar(0.170, 0.100), (False, True))   # piscadela: o esquerdo aberto
 
     def test_quatro_segundos_fechado_continua_cancelando(self):
         r = Roteiro(Gestos(ConfigGestos()))
         self.assertEqual(r.rodar(t(1, A), t(1.0, F), t(0.4, A), t(4.0, F), t(1, A)), [])
+
+
+class TestSemCliqueSozinho(unittest.TestCase):
+    """Trecho medido sem piscar de propósito (olhando para baixo): não pode virar clique."""
+
+    EARS = [(0.171, 0.172), (0.151, 0.132), (0.154, 0.122), (0.127, 0.095), (0.131, 0.108),
+            (0.133, 0.107), (0.143, 0.118), (0.167, 0.150), (0.186, 0.177)]
+
+    def test_olhar_para_baixo_duas_vezes_nao_clica(self):
+        cal = CalibPalpebra(aberto_e=0.218, fechado_e=0.080, aberto_d=0.214, fechado_d=0.066)
+        p, g = Palpebras(cal), Gestos(ConfigGestos())
+        tt, cliques = 0.0, []
+        for _ in range(2):                                   # o mesmo movimento duas vezes seguidas
+            for ears in [(0.21, 0.21)] * 15 + [e for e in self.EARS for _ in range(4)] + [(0.21, 0.21)] * 6:
+                c = g.atualizar(tt, *p.atualizar(*ears))
+                tt += 1 / 15
+                if c:
+                    cliques.append(c)
+        self.assertEqual(cliques, [])
+        self.assertFalse(g.ultimo_evento.startswith(("piscada", "piscadela")))
+
+    def test_piscada_de_verdade_ainda_clica(self):
+        cal = CalibPalpebra(aberto_e=0.218, fechado_e=0.080, aberto_d=0.214, fechado_d=0.066)
+        p, g = Palpebras(cal), Gestos(ConfigGestos())
+        tt, cliques = 0.0, []
+        for ears in ([(0.21, 0.21)] * 15 + [(0.07, 0.06)] * 10 + [(0.21, 0.21)] * 8 + [(0.07, 0.06)] * 10 + [(0.21, 0.21)] * 15):
+            c = g.atualizar(tt, *p.atualizar(*ears))
+            tt += 1 / 15
+            if c:
+                cliques.append(c)
+        self.assertEqual(cliques, ["direito"])
 
 
 if __name__ == "__main__":

@@ -49,10 +49,13 @@ def olho_fechado_na_coleta(calib: CalibPalpebra, ear_e: float, ear_d: float) -> 
 
 
 class Palpebras:
-    ACOMPANHA = 0.45
+    # Medido com a webcam: olhando para baixo ou apertando os olhos a pálpebra chega a 80 %
+    # de fechamento por ~1 s; a piscada de verdade passa de 90 %. Com 60 % o programa clicava
+    # sozinho.
+    ACOMPANHA = 0.75
 
     def __init__(self, calib: CalibPalpebra, janela_mediana: int = 3,
-                 limiar_fecha: float = 0.6, limiar_abre: float = 0.4):
+                 limiar_fecha: float = 0.9, limiar_abre: float = 0.5):
         self.calib = calib
         self.lim_fecha = limiar_fecha
         self.lim_abre = limiar_abre
