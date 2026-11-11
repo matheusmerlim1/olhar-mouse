@@ -15,7 +15,7 @@ INTEIRA = (0.0, 0.0, 1.0, 1.0)
 
 class Zoom:
     def __init__(self, ligado: bool = True, ocupacao: float = 0.42, largura_min: float = 0.30,
-                 tempo_sem_rosto: float = 1.2):
+                 tempo_sem_rosto: float = 0.4):
         self.ligado = ligado
         self.ocupacao, self.largura_min, self.tempo_sem_rosto = ocupacao, largura_min, tempo_sem_rosto
         self.recorte = INTEIRA

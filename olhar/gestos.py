@@ -49,6 +49,8 @@ def olho_fechado_na_coleta(calib: CalibPalpebra, ear_e: float, ear_d: float) -> 
 
 
 class Palpebras:
+    ACOMPANHA = 0.45
+
     def __init__(self, calib: CalibPalpebra, janela_mediana: int = 3,
                  limiar_fecha: float = 0.6, limiar_abre: float = 0.4):
         self.calib = calib
@@ -70,7 +72,12 @@ class Palpebras:
                     self.fechado[lado] = False
             elif nivel > self.lim_fecha:
                 self.fechado[lado] = True
-        return self.fechado["esq"], self.fechado["dir"]
+        fe, fd = self.fechado["esq"], self.fechado["dir"]
+        # piscada dos dois olhos em que um fecha mais que o outro: se o outro está pelo menos
+        # quase na metade do caminho, conta como os dois (numa piscadela ele fica aberto)
+        if fe != fd and min(self.nivel["esq"], self.nivel["dir"]) > self.ACOMPANHA:
+            fe = fd = True
+        return fe, fd
 
 
 def estado_de(fech_e: bool, fech_d: bool) -> str:
@@ -86,7 +93,7 @@ def estado_de(fech_e: bool, fech_d: bool) -> str:
 @dataclass
 class ConfigGestos:
     lento_min: float = 0.30       # s — abaixo disso é piscada normal (ignorada)
-    lento_max: float = 1.50       # s — acima disso é "descansando o olho" (cancela)
+    lento_max: float = 2.50       # s — acima disso é "descansando o olho" (cancela); medido: piscadas lentas de até 1,6 s
     janela: float = 1.50          # s — tempo máximo entre o fim de uma e o início da outra
     estabilidade: float = 0.06    # s — um estado só vale se durar isso (tira ruído)
     dominancia: float = 0.60      # fração do episódio num estado para classificá-lo

@@ -10,7 +10,7 @@ celular. O cursor vai para onde você olha, e piscadas lentas viram cliques.
 | **2 piscadelas lentas** (só um olho fecha, o outro fica aberto) | **clique esquerdo** |
 | Manter um olho fechado e piscar o outro **2 vezes devagar** | **clique esquerdo** |
 
-"Lenta" quer dizer olho fechado entre 0,3 s e 1,5 s, com no máximo 1,5 s entre uma piscada e a
+"Lenta" quer dizer olho fechado entre 0,3 s e 2,5 s, com no máximo 1,5 s entre uma piscada e a
 próxima. A piscada normal (rápida, involuntária) é ignorada. Fechar os olhos por mais tempo
 (para descansar) cancela o gesto. Enquanto o olho está fechado o cursor fica parado, e o clique
 cai onde você estava olhando antes de piscar.
@@ -220,7 +220,7 @@ O clique sai 1,5 s depois da última piscada (é o tempo de saber se vem mais um
 | `ponteiro_separado` | `true` | anel próprio do olhar; `false` move o cursor do Windows |
 | `zoom` | `"auto"` | `"auto"` recorta em volta do rosto; `"off"` usa a imagem inteira |
 | `som` | `true` | bipe no clique e na pausa |
-| `gestos.lento_min` / `lento_max` | `0.30` / `1.50` | duração (s) de uma piscada "lenta" |
+| `gestos.lento_min` / `lento_max` | `0.30` / `2.50` | duração (s) de uma piscada "lenta" |
 | `gestos.janela` | `1.50` | tempo máximo (s) entre as duas piscadas |
 | `estabilidade` | `"media"` | `"baixa"` (mais rápido), `"media"` ou `"alta"` (mais firme); também pelo menu |
 
@@ -274,7 +274,7 @@ ajustes finos.
 .venv\Scripts\python -m unittest discover -s tests -t .
 ```
 
-São 101 testes, todos sem câmera nem celular: os gestos (sequências de piscadas sintéticas, incluindo
+São 107 testes, todos sem câmera nem celular: os gestos (sequências de piscadas sintéticas, incluindo
 piscadas normais, ruído de um quadro, olhos que não fecham juntos, olho fechado demais), as
 pálpebras (calibração por usuário, histerese, pico de reflexo), a geometria, a regressão, o
 filtro e o congelamento do cursor.

@@ -191,5 +191,25 @@ class TestMediaFoundation(unittest.TestCase):
         self.assertFalse(parecidas(a, np.zeros_like(a)))              # câmera preta
 
 
+class TestPiscadasMedidas(unittest.TestCase):
+    """Casos medidos com a webcam: piscadas lentas de 1,6 s e um olho fechando mais que o outro."""
+
+    def test_piscada_lenta_de_1_6_s_clica(self):
+        r = Roteiro(Gestos(ConfigGestos()))
+        c = r.rodar(t(1, A), t(1.6, F), t(0.5, A), t(1.6, F), t(1, A))
+        self.assertEqual(c, ["direito"])
+
+    def test_um_olho_fecha_mais_que_o_outro_conta_como_os_dois(self):
+        cal = CalibPalpebra(aberto_e=0.178, fechado_e=0.074, aberto_d=0.175, fechado_d=0.098)
+        p = Palpebras(cal, janela_mediana=1)
+        self.assertEqual(p.atualizar(0.120, 0.100), (True, True))     # esq meio caminho, dir fechado
+        p2 = Palpebras(cal, janela_mediana=1)
+        self.assertEqual(p2.atualizar(0.170, 0.100), (False, True))   # piscadela: o esquerdo aberto
+
+    def test_quatro_segundos_fechado_continua_cancelando(self):
+        r = Roteiro(Gestos(ConfigGestos()))
+        self.assertEqual(r.rodar(t(1, A), t(1.0, F), t(0.4, A), t(4.0, F), t(1, A)), [])
+
+
 if __name__ == "__main__":
     unittest.main()

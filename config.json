@@ -10,7 +10,7 @@
   "pontos_calibracao": 13,
   "gestos": {
     "lento_min": 0.3,
-    "lento_max": 1.5,
+    "lento_max": 2.5,
     "janela": 1.5
   },
   "estabilidade": "media"
