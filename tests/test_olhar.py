@@ -264,11 +264,13 @@ class TestVertical(unittest.TestCase):
         m.ajustar(f, a)
         self.assertEqual(m.coef[4, 1], 0.0)              # cabeça ao contrário da íris: fora
 
-    def test_eixos_nao_se_misturam(self):
+    def test_eixos_quase_nao_se_misturam_com_a_cabeca_parada(self):
+        # olhos e cabeça podem entrar nos dois eixos (a cabeça acompanha o olhar), mas sem
+        # esse acoplamento nos dados a mistura tem de ser desprezível
         m = ModeloOlhar()
         m.ajustar(*self.amostras(True))
-        self.assertEqual(m.coef[2, 0], 0.0)              # íris vertical não move o X
-        self.assertEqual(m.coef[1, 1], 0.0)              # íris horizontal não move o Y
+        self.assertLess(abs(m.coef[2, 0]), 0.05 * abs(m.coef[1, 0]))   # íris vertical no X
+        self.assertLess(abs(m.coef[1, 1]), 0.05 * abs(m.coef[2, 1]))   # íris horizontal no Y
 
     def test_calibracao_antiga_continua_valendo(self):
         m = ModeloOlhar()
@@ -307,7 +309,7 @@ class TestOlhosENariz(unittest.TestCase):
                     modos.append(modo)
         m = ModeloOlhar()
         m.ajustar(np.array(f), np.array(a, float))
-        self.assertEqual(m.forma, "modos")
+        self.assertEqual(m.forma, "natural")
         for modo in ("olhos", "nariz"):
             alvo = (1250, 400)
             erro = np.mean([np.hypot(*(m.prever(self.amostra(alvo, modo, rng)) - alvo)) for _ in range(30)])
@@ -320,5 +322,42 @@ class TestOlhosENariz(unittest.TestCase):
         m = ModeloOlhar()
         m.ajustar(f, a)
         m2 = ModeloOlhar.de_dict(m.para_dict())
-        self.assertEqual(m2.forma, "modos")
+        self.assertEqual(m2.forma, "natural")
         np.testing.assert_allclose(m.prever(f[0]), m2.prever(f[0]))
+
+
+class TestCabecaAcompanha(unittest.TestCase):
+    """Ao olhar para um ponto, a cabeça gira um pouco junto (e mais na tela ao lado)."""
+
+    @staticmethod
+    def amostra(alvo, rng):
+        ang = (alvo[0] - 1500) / 1500                  # duas telas lado a lado
+        yaw = 0.7 * ang                                # a cabeça faz boa parte do giro...
+        u = -0.25 * (ang - 0.7 * ang) * (1 - 0.4 * abs(yaw))   # ...e o olho completa
+        dy = (alvo[1] - 960) / 960
+        pitch = 0.56 + 0.15 * dy + 0.05 * yaw * dy
+        v = 0.04 * dy * (1 - 0.3 * abs(yaw))
+        return [u + rng.normal(0, 0.002), v + rng.normal(0, 0.001), yaw + rng.normal(0, 0.005), pitch + rng.normal(0, 0.005)]
+
+    def test_erra_pouco_com_a_cabeca_acompanhando(self):
+        rng = np.random.default_rng(7)
+        grade = [(x, y) for x in np.linspace(150, 2850, 6) for y in np.linspace(150, 1770, 4)]
+        f, a = [], []
+        for p in grade:
+            for _ in range(12):
+                f.append(self.amostra(p, rng))
+                a.append(p)
+        m = ModeloOlhar()
+        m.ajustar(np.array(f), np.array(a, float))
+        self.assertEqual(m.forma, "natural")
+        alvos = [(700, 500), (2600, 1500), (1500, 960)]
+        erro = np.mean([np.hypot(*(m.prever(self.amostra(p, rng)) - p)) for p in alvos for _ in range(10)])
+        self.assertLess(erro, 120)
+
+    def test_calibracao_de_antes_continua_lendo(self):
+        m = ModeloOlhar()
+        m.forma, m.media, m.desvio = "modos", np.zeros(4), np.ones(4)
+        m.coef = np.zeros((7, 2))
+        m.coef[0] = [960, 540]
+        np.testing.assert_allclose(m.prever([0.1, 0.0, 0.2, 0.0]), [960, 540])
+

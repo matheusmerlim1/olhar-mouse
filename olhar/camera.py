@@ -29,6 +29,19 @@ def listar_cameras() -> list[str]:
         return []
 
 
+def aviso_enquadramento(cabeca) -> str | None:
+    """O que ajustar na câmera se o rosto está na borda da imagem (metade dele fica de fora
+    e o detector o perde a toda hora). cabeca = centro x, y e largura, em frações da imagem."""
+    x, y = float(cabeca[0]), float(cabeca[1])
+    if y > 0.72:
+        return "Seu rosto esta na borda de BAIXO da imagem: incline a camera para baixo"
+    if y < 0.25:
+        return "Seu rosto esta na borda de CIMA da imagem: incline a camera para cima"
+    if x < 0.2 or x > 0.8:
+        return "Seu rosto esta no canto da imagem: gire a camera para deixa-lo no meio"
+    return None
+
+
 def indice_msmf(nomes: list[str], idx: int) -> int | None:
     """Número da câmera no Media Foundation. Câmeras virtuais (OBS etc.) só existem no
     DirectShow, então a ordem é a das câmeras reais."""
@@ -61,19 +74,26 @@ def _abrir_msmf(fonte: int, nomes: list[str], largura: int, altura: int):
     k = indice_msmf(nomes, fonte)
     if k is None or not hasattr(cv2, "CAP_MSMF"):
         return None
-    ds = cv2.VideoCapture(fonte, cv2.CAP_DSHOW)
-    ref = _ler_um(ds) if ds.isOpened() else None
-    ds.release()
-    if ref is None:
-        return None
+    from .escolha import eh_virtual
+    unica = sum(1 for n in nomes if not eh_virtual(n)) == 1   # sem como confundir: dispensa a comparação
+    ref = None
+    if not unica:
+        ds = cv2.VideoCapture(fonte, cv2.CAP_DSHOW)
+        if ds.isOpened():
+            _ler_um(ds, 10)          # a exposição automática leva alguns quadros para acertar
+            ref = _ler_um(ds)
+        ds.release()
+        if ref is None:
+            return None
     ms = cv2.VideoCapture(k, cv2.CAP_MSMF)
     if not ms.isOpened():
         return None
     ms.set(cv2.CAP_PROP_FRAME_WIDTH, largura)
     ms.set(cv2.CAP_PROP_FRAME_HEIGHT, altura)
     ms.set(cv2.CAP_PROP_FPS, 30)
+    _ler_um(ms, 10)
     f = _ler_um(ms)
-    if f is None or not parecidas(ref, f):
+    if f is None or (ref is not None and not parecidas(ref, f)):
         ms.release()
         return None
     return ms

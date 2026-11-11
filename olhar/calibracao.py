@@ -19,6 +19,7 @@ import numpy as np
 from . import mouse
 from .gestos import CalibPalpebra, olho_fechado_na_coleta
 from .modelo_olhar import ModeloOlhar
+from .camera import aviso_enquadramento
 from .olhos import OLHO, vetor_olhar
 
 JANELA = "Calibracao - olhar-mouse"
@@ -251,6 +252,9 @@ def _preparar(cap, detector, tela: _Tela, firme: float = 1.5) -> None:
         if m is None:
             desde = None
             txt, cor = "Rosto nao encontrado: fique de frente para a camera, com luz no rosto", (80, 80, 255)
+        elif aviso_enquadramento(detector.cabeca):
+            desde = None          # não começa com o rosto meio fora da imagem
+            txt, cor = aviso_enquadramento(detector.cabeca), (80, 200, 255)
         elif detector.ocupacao < 0.28:
             # rosto pequeno = íris com poucos pixels = cursor impreciso e tremido
             desde = None

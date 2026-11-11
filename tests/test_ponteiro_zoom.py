@@ -60,7 +60,7 @@ class TestZoom(unittest.TestCase):
     def test_sem_rosto_abre_a_imagem_depois_de_um_tempo(self):
         z = Zoom()
         z.atualizar(self.ROSTO_PEQUENO, INTEIRA, 0.0)
-        self.assertFalse(z.atualizar(None, z.recorte, 0.5))
+        self.assertFalse(z.atualizar(None, z.recorte, 0.2))      # perdeu por um instante: mantém
         self.assertTrue(z.atualizar(None, z.recorte, 2.0))
         self.assertEqual(z.recorte, INTEIRA)
 
@@ -91,3 +91,13 @@ class TestRecorteNoServidor(unittest.TestCase):
             self.assertEqual(cam.recorte_do_quadro, (0.0, 0.0, 1.0, 1.0))
         finally:
             cam.release()
+
+
+class TestEnquadramento(unittest.TestCase):
+    def test_diz_o_que_ajustar(self):
+        from olhar.camera import aviso_enquadramento
+        self.assertIn("para baixo", aviso_enquadramento([0.36, 0.93, 0.39]))   # o caso medido
+        self.assertIn("para cima", aviso_enquadramento([0.5, 0.1, 0.3]))
+        self.assertIn("meio", aviso_enquadramento([0.92, 0.5, 0.3]))
+        self.assertIsNone(aviso_enquadramento([0.5, 0.5, 0.38]))
+

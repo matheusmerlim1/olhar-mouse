@@ -29,7 +29,7 @@ PACIENCIA = 2             # rodadas seguidas sem melhorar antes de parar
 ESPERA_RODADA = 2.5       # segundos mostrando o resultado de cada rodada
 ESPERA_FINAL = 12.0
 MAX_PONTOS = 150          # pontos guardados (calibração + rodadas mais recentes)
-SO_OLHOS = "So com os OLHOS\ncabeca parada"
+SO_OLHOS = "Olhe para o alvo"
 NARIZ = "Aponte o NARIZ"
 INSTRUCOES = (
     "Cabeca para a ESQUERDA\nolhando o alvo",

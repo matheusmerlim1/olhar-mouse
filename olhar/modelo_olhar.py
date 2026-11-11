@@ -21,6 +21,8 @@ def _termos(f: np.ndarray, forma: str = "quadratico") -> np.ndarray:
         return np.column_stack(base)
     if forma == "modos":        # + íris×giro (virar o rosto "encurta" o olho) e giro²
         return np.column_stack(base + [u * yaw, yaw * yaw])
+    if forma == "natural":      # modos + íris vertical×giro e inclinação×giro
+        return np.column_stack(base + [u * yaw, yaw * yaw, v * yaw, pitch * yaw])
     return np.column_stack(base + [u * u, v * v, u * v, yaw * pitch])
 
 
@@ -28,10 +30,18 @@ FORMAS = ("separado",)
 # forma "modos": termos candidatos de cada eixo (colunas de `_termos`). Serve tanto para usar
 # só os olhos quanto para apontar o nariz; a calibração escolhe o que erra menos.
 # 1=u 2=v 3=giro 4=inclinação 5=u×giro 6=giro²
+# 1=u 2=v 3=giro 4=inclinação 5=u×giro 6=giro² 7=v×giro 8=inclinação×giro
+# Por eixo: conjuntos "separados" (íris + cabeça do mesmo eixo, a cabeça no mesmo sentido da
+# íris) e conjuntos "naturais", em que olhos e cabeça entram juntos nos dois eixos: ao olhar
+# para um ponto a cabeça acompanha um pouco, e o giro muda o efeito da íris e da inclinação.
+# A calibração escolhe o que erra menos em pontos deixados de fora.
+_NATURAIS = ((1, 2, 3, 4), (1, 2, 3, 4, 5, 6), (1, 2, 3, 4, 5, 6, 7, 8))
 CANDIDATOS = (
-    (1, 3, ((1,), (1, 3), (1, 3, 5), (1, 3, 5, 6))),   # horizontal: (íris, cabeça, conjuntos)
-    (2, 4, ((2,), (2, 4), (2, 4, 3), (2, 3))),         # vertical
+    (1, 3, ((1,), (1, 3), (1, 3, 5), (1, 3, 5, 6)) + _NATURAIS),   # horizontal: (íris, cabeça, conjuntos)
+    (2, 4, ((2,), (2, 4), (2, 4, 3), (2, 3)) + _NATURAIS),         # vertical
 )
+
+
 RIDGES = (0.01, 1.0, 10.0, 50.0, 200.0)
 
 
@@ -56,7 +66,7 @@ def _resolver_separado(X: np.ndarray, y: np.ndarray, ridge: float) -> np.ndarray
 
 def _ajustar_modos(z: np.ndarray, alvos: np.ndarray):
     """Escolhe, por eixo, termos e regularização pelo erro em pontos deixados de fora."""
-    X = _termos(z, "modos")
+    X = _termos(z, "natural")
     pontos, grupo = np.unique(alvos, axis=0, return_inverse=True)
     grupo = np.asarray(grupo).ravel()
     coef, ridges, erro_total = np.zeros((X.shape[1], 2)), [], np.zeros(2)
@@ -65,12 +75,14 @@ def _ajustar_modos(z: np.ndarray, alvos: np.ndarray):
         for extra in conjuntos:
             colunas = [0, *extra]
             A = X[:, colunas]
-            c = _resolver(A, y, 1.0)
-            # a cabeça tem de agir no mesmo sentido da íris; o contrário é ruído
-            if cabeca in extra and c[colunas.index(iris)] * c[colunas.index(cabeca)] < 0:
-                continue
+            # olhos e cabeça viram para o mesmo lado: aprendizado com a cabeça no sentido
+            # contrário ao da íris é ruído (era o anel que descia ao levantar o rosto)
+            if iris in extra and cabeca in extra:
+                c = _resolver(A, y, 1.0)
+                if c[colunas.index(iris)] * c[colunas.index(cabeca)] < 0:
+                    continue
             if len(pontos) < 4:
-                if melhor is None or len(extra) == 2:
+                if melhor is None or extra == (iris, cabeca):
                     melhor = (0.0, colunas, 1.0)
                 continue
             for r in RIDGES:
@@ -124,9 +136,9 @@ class ModeloOlhar:
         self.desvio = feats.std(axis=0) + 1e-9
         z = (feats - self.media) / self.desvio
         if forma is None and ridge is None:
-            self.forma = "modos"
+            self.forma = "natural"
             self.coef, self.ridge, self.erro_cv_px = _ajustar_modos(z, alvos)
-            self.erro_px = float(np.linalg.norm(_termos(z, "modos") @ self.coef - alvos, axis=1).mean())
+            self.erro_px = float(np.linalg.norm(_termos(z, "natural") @ self.coef - alvos, axis=1).mean())
             return self.erro_px
         if forma is None or ridge is None:
             forma, ridge, self.erro_cv_px = self._escolher(z, alvos, forma, ridge)

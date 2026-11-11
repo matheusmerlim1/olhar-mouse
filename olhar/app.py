@@ -17,7 +17,7 @@ import numpy as np
 
 from . import mouse
 from .calibracao import Cancelado, bipe, calibrar
-from .camera import Detector, abrir_camera
+from .camera import Detector, abrir_camera, aviso_enquadramento
 from .celular import CameraCelular, aguardar_celular
 from .filtro import ESTABILIDADE, Estabilizador, MedianaVetor, OneEuro2D
 from .gestos import ConfigGestos, Gestos, Palpebras
@@ -38,7 +38,7 @@ PADRAO = {
     "atualizar_automaticamente": True,
     "som": True,
     "pontos_calibracao": 13,
-    "gestos": {"lento_min": 0.30, "lento_max": 1.50, "janela": 1.50},
+    "gestos": {"lento_min": 0.30, "lento_max": 2.50, "janela": 1.50},
     "ponteiro_separado": True, # anel próprio do olhar, sem tocar no cursor do Windows
     "zoom": "auto",            # auto / off
     "estabilidade": "media",   # baixa / media / alta (menu "Estabilidade do cursor")
@@ -269,7 +269,7 @@ def executar(cfg: dict, arq_calib: Path, ctl, ui, forcar_calibracao: bool = Fals
             modelo, calib_palp, extra = carregar(arq_calib)
             ajuste = AjusteCabeca.de_dict(extra.get("ajuste"))
             pontos_mira = extra.get("pontos") or []
-            if modelo.forma != "modos" and len(pontos_mira) >= 10 and extra.get("tela") == list(tela):
+            if modelo.forma != "natural" and len(pontos_mira) >= 10 and extra.get("tela") == list(tela):
                 # calibração feita antes do modelo que serve para olhos e nariz: reaproveita os pontos
                 modelo, ajuste = reajustar(pontos_mira)
                 salvar_mira(arq_calib, modelo, ajuste, pontos_mira)
@@ -293,6 +293,8 @@ def executar(cfg: dict, arq_calib: Path, ctl, ui, forcar_calibracao: bool = Fals
         palp, gestos, filtro, cong = novo_estado()
         sem_rosto_desde = None
         fora_desde = None
+        visto = deque(maxlen=300)   # (t, achou o rosto) dos últimos ~10 s
+        avisou_enquadramento = -1e9
         colocado = None      # último ponto em que o OLHAR pôs o cursor
         fisico_t = None
         teclas_antes = {mouse.VK_F8: False, mouse.VK_F9: False, mouse.VK_F10: False}
@@ -324,6 +326,15 @@ def executar(cfg: dict, arq_calib: Path, ctl, ui, forcar_calibracao: bool = Fals
                 continue
             t = time.monotonic()
             m = detector.processar(frame)
+            # rosto sumindo da imagem a toda hora: avisa o que ajustar na câmera (a cada 2 min no máximo)
+            visto.append((t, m is not None))
+            if t - visto[0][0] > 8 and t - avisou_enquadramento > 120:
+                taxa = sum(a for _, a in visto) / len(visto)
+                dica = aviso_enquadramento(detector.cabeca)
+                if taxa < 0.5 and dica:
+                    avisou_enquadramento = t
+                    print(f"Enquadramento: rosto em {taxa:.0%} dos quadros; {dica}")
+                    ui.notificar("Rosto saindo da imagem", dica.replace("esta", "está").replace("camera", "câmera"))
 
             # --- teclas globais (funcionam com qualquer janela em foco)
             for vk in teclas_antes:
@@ -394,10 +405,12 @@ def executar(cfg: dict, arq_calib: Path, ctl, ui, forcar_calibracao: bool = Fals
                         else:                # clica onde o cursor está
                             mouse.clicar(clique)
                         msg, msg_t = f"CLIQUE {clique.upper()}", t
+                        print(f"Clique {clique}")
                         if cfg["som"]:
                             bipe(1200 if clique == "esquerdo" else 700, 60)
                 if gestos.ultimo_evento != evento_visto:
                     evento_visto = gestos.ultimo_evento
+                    print(f"Piscada: {evento_visto}")
                     if not (clique and msg_t == t):
                         msg, msg_t = evento_visto, t
                 status = ("PAUSADO (F9)" if ctl.pausado else "olhar fora da area calibrada" if fora
